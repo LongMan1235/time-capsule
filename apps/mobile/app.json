@@ -6,7 +6,10 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "assetBundlePatterns": ["**/*"],
+    "newArchEnabled": true,
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.timecapsule.mobile"
@@ -22,6 +25,11 @@
       "apiMode": "demo",
       "mapboxPublicToken": ""
     },
-    "plugins": ["expo-notifications", "expo-image-picker", "expo-location"]
+    "plugins": [
+      "expo-notifications",
+      "expo-image-picker",
+      "expo-location",
+      "expo-asset"
+    ]
   }
 }

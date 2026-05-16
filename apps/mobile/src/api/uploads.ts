@@ -16,7 +16,7 @@ export async function pickAndUploadMedia(eventId: string) {
 
   const picked = await ImagePicker.launchImageLibraryAsync({
     allowsMultipleSelection: false,
-    mediaTypes: ImagePicker.MediaTypeOptions.All,
+    mediaTypes: ["images", "videos"],
     quality: 0.86
   });
 
