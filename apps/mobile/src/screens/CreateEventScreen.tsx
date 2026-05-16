@@ -1,8 +1,9 @@
 import { useNavigation } from "@react-navigation/native";
-import { CalendarClock, Heading2, MapPin, X } from "lucide-react-native";
+import { CalendarClock, Camera, Globe, Heading2, Hourglass, MapPin, Users, X } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { ContributorScope } from "@time-capsule/shared";
 import { api } from "../api/client";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -10,14 +11,31 @@ import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
 import { TextField } from "../components/TextField";
 import { colors, radii, type } from "../design/theme";
+import type { IconComponent } from "../design/icons";
 
-const presets = [
-  { label: "1 week", days: 7 },
-  { label: "1 month", days: 30 },
-  { label: "6 months", days: 182 },
-  { label: "1 year", days: 365 },
-  { label: "5 years", days: 365 * 5 }
+const collectionWindows = [
+  { label: "1 day", hours: 24 },
+  { label: "3 days", hours: 72 },
+  { label: "1 week", hours: 168 },
+  { label: "1 month", hours: 720 }
 ];
+
+const unlockPresets = [
+  { label: "1 mo", days: 30 },
+  { label: "6 mo", days: 182 },
+  { label: "1 yr", days: 365 },
+  { label: "5 yr", days: 365 * 5 }
+];
+
+const contributorOptions: Array<{ value: ContributorScope; label: string; description: string; Icon: IconComponent }> = [
+  { value: "OWNER_ONLY", label: "Just me", description: "Only you can add memories.", Icon: Camera },
+  { value: "FRIENDS", label: "Friends", description: "People you invite can contribute.", Icon: Users },
+  { value: "OPEN_LINK", label: "Open link", description: "Anyone with the link can add.", Icon: Globe }
+];
+
+function isoFromHours(hours: number) {
+  return new Date(Date.now() + hours * 3_600_000).toISOString();
+}
 
 function isoFromDays(days: number) {
   return new Date(Date.now() + days * 86_400_000).toISOString();
@@ -33,11 +51,14 @@ export function CreateEventScreen() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [locationName, setLocationName] = useState("");
-  const [unlockAt, setUnlockAt] = useState<string | undefined>(isoFromDays(365));
-  const [presetDays, setPresetDays] = useState<number | undefined>(365);
+  const [collectionHours, setCollectionHours] = useState(168);
+  const [unlockDays, setUnlockDays] = useState(365);
+  const [contributorScope, setContributorScope] = useState<ContributorScope>("OWNER_ONLY");
+  const [mediaCap, setMediaCap] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const dateLabel = useMemo(() => (unlockAt ? localDateLabel(unlockAt) : "Pick an unlock day"), [unlockAt]);
+  const collectionClosesAt = useMemo(() => isoFromHours(collectionHours), [collectionHours]);
+  const unlockAt = useMemo(() => isoFromDays(unlockDays + Math.ceil(collectionHours / 24)), [unlockDays, collectionHours]);
 
   async function create() {
     if (!title.trim()) {
@@ -53,20 +74,23 @@ export function CreateEventScreen() {
           description,
           locationName,
           eventDate: new Date().toISOString(),
+          collectionClosesAt,
           unlockAt,
-          visibility: "PRIVATE"
+          visibility: contributorScope === "OPEN_LINK" ? "COLLABORATIVE" : contributorScope === "FRIENDS" ? "FRIENDS" : "PRIVATE",
+          contributorScope,
+          mediaCap
         })
       });
       navigation.goBack();
     } catch (error) {
-      Alert.alert("Could not create event", error instanceof Error ? error.message : "Try again.");
+      Alert.alert("Could not create capsule", error instanceof Error ? error.message : "Try again.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Screen edges={["left", "right"]}>
+    <Screen edges={["left", "right"]} tone="paper">
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <AnimatedPressable onPress={() => navigation.goBack()} style={styles.close}>
@@ -77,10 +101,10 @@ export function CreateEventScreen() {
         </View>
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]} keyboardShouldPersistTaps="handled">
           <Stagger delay={80}>
-            <Text style={styles.title}>What do you want{"\n"}future-you to feel?</Text>
+            <Text style={styles.title}>Start a new page.</Text>
           </Stagger>
 
-          <Stagger delay={220} style={styles.fields}>
+          <Stagger delay={200} style={styles.fields}>
             <TextField
               label="TITLE"
               icon={Heading2}
@@ -110,43 +134,124 @@ export function CreateEventScreen() {
             />
           </Stagger>
 
-          <Stagger delay={360}>
-            <View style={styles.unlockBlock}>
-              <View style={styles.unlockHead}>
-                <View style={styles.unlockHeadInner}>
-                  <CalendarClock color={colors.muted} size={16} />
-                  <Text style={styles.unlockTitle}>Unlock date</Text>
-                </View>
-                <Text style={styles.unlockValue}>{dateLabel}</Text>
-              </View>
-              <View style={styles.presetRow}>
-                {presets.map((preset) => {
-                  const active = preset.days === presetDays;
+          <Stagger delay={320}>
+            <SettingsBlock Icon={Hourglass} title="Collection window" value={`Closes ${localDateLabel(collectionClosesAt)}`}>
+              <View style={styles.chipRow}>
+                {collectionWindows.map((option) => {
+                  const active = option.hours === collectionHours;
                   return (
                     <AnimatedPressable
-                      key={preset.label}
-                      onPress={() => {
-                        setPresetDays(preset.days);
-                        setUnlockAt(isoFromDays(preset.days));
-                      }}
-                      style={[styles.preset, active ? styles.presetActive : null]}
+                      key={option.label}
+                      onPress={() => setCollectionHours(option.hours)}
+                      style={[styles.chip, active ? styles.chipActive : null]}
                     >
-                      <Text style={[styles.presetLabel, active ? styles.presetLabelActive : null]}>{preset.label}</Text>
+                      <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]}>{option.label}</Text>
                     </AnimatedPressable>
                   );
                 })}
               </View>
-            </View>
+              <Text style={styles.helperText}>
+                After the window closes, no new memories can be added. The capsule auto-seals.
+              </Text>
+            </SettingsBlock>
           </Stagger>
 
-          <Stagger delay={500}>
+          <Stagger delay={420}>
+            <SettingsBlock Icon={CalendarClock} title="Unlock date" value={localDateLabel(unlockAt)}>
+              <View style={styles.chipRow}>
+                {unlockPresets.map((option) => {
+                  const active = option.days === unlockDays;
+                  return (
+                    <AnimatedPressable
+                      key={option.label}
+                      onPress={() => setUnlockDays(option.days)}
+                      style={[styles.chip, active ? styles.chipActive : null]}
+                    >
+                      <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]}>{option.label}</Text>
+                    </AnimatedPressable>
+                  );
+                })}
+              </View>
+            </SettingsBlock>
+          </Stagger>
+
+          <Stagger delay={520}>
+            <SettingsBlock Icon={Users} title="Who can add">
+              <View style={styles.optionList}>
+                {contributorOptions.map((option) => {
+                  const active = option.value === contributorScope;
+                  return (
+                    <AnimatedPressable
+                      key={option.value}
+                      onPress={() => setContributorScope(option.value)}
+                      style={[styles.option, active ? styles.optionActive : null]}
+                    >
+                      <View style={[styles.optionIcon, active ? styles.optionIconActive : null]}>
+                        <option.Icon color={active ? colors.ink : colors.muted} size={14} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.optionTitle, active ? styles.optionTitleActive : null]}>{option.label}</Text>
+                        <Text style={styles.optionBody}>{option.description}</Text>
+                      </View>
+                    </AnimatedPressable>
+                  );
+                })}
+              </View>
+            </SettingsBlock>
+          </Stagger>
+
+          <Stagger delay={620}>
+            <SettingsBlock Icon={Camera} title="Photo cap" value={mediaCap ? `${mediaCap} photos` : "Unlimited"}>
+              <View style={styles.chipRow}>
+                {[null, 20, 50, 100, 250].map((cap) => {
+                  const active = cap === mediaCap;
+                  return (
+                    <AnimatedPressable
+                      key={cap ?? "none"}
+                      onPress={() => setMediaCap(cap)}
+                      style={[styles.chip, active ? styles.chipActive : null]}
+                    >
+                      <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]}>{cap ?? "∞"}</Text>
+                    </AnimatedPressable>
+                  );
+                })}
+              </View>
+            </SettingsBlock>
+          </Stagger>
+
+          <Stagger delay={760}>
             <PrimaryButton onPress={create} loading={saving}>
-              Seal capsule
+              Open collection
             </PrimaryButton>
           </Stagger>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
+  );
+}
+
+function SettingsBlock({
+  Icon,
+  title,
+  value,
+  children
+}: {
+  Icon: IconComponent;
+  title: string;
+  value?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.block}>
+      <View style={styles.blockHead}>
+        <View style={styles.blockHeadInner}>
+          <Icon color={colors.muted} size={14} />
+          <Text style={styles.blockTitle}>{title}</Text>
+        </View>
+        {value ? <Text style={styles.blockValue}>{value}</Text> : null}
+      </View>
+      {children}
+    </View>
   );
 }
 
@@ -170,13 +275,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card
   },
   eyebrow: { ...type.micro, color: colors.muted },
-  content: { padding: 24, gap: 22 },
+  content: { padding: 24, gap: 20 },
   title: { ...type.hero, color: colors.fog },
-  fields: { gap: 14 },
+  fields: { gap: 12 },
   textAreaWrap: { gap: 8 },
   label: { ...type.micro, color: colors.muted },
   textArea: {
-    minHeight: 110,
+    minHeight: 100,
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderRadius: radii.md,
@@ -187,28 +292,56 @@ const styles = StyleSheet.create({
     ...type.body,
     textAlignVertical: "top"
   },
-  unlockBlock: {
+  block: {
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.card,
     padding: 16,
-    gap: 14
+    gap: 12
   },
-  unlockHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  unlockHeadInner: { flexDirection: "row", alignItems: "center", gap: 8 },
-  unlockTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
-  unlockValue: { ...type.caption, color: colors.muted },
-  presetRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  preset: {
+  blockHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  blockHeadInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  blockTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
+  blockValue: { ...type.caption, color: colors.muted },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.card
   },
-  presetActive: { backgroundColor: colors.fog, borderColor: colors.fog },
-  presetLabel: { ...type.caption, color: colors.fog, fontWeight: "600" },
-  presetLabelActive: { color: colors.ink }
+  chipActive: { backgroundColor: colors.fog, borderColor: colors.fog },
+  chipLabel: { ...type.caption, color: colors.fog, fontWeight: "600" },
+  chipLabelActive: { color: colors.ink },
+  helperText: { ...type.caption, color: colors.muted, lineHeight: 18 },
+  optionList: { gap: 8 },
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card
+  },
+  optionActive: { borderColor: colors.gold, backgroundColor: "rgba(232,194,107,0.08)" },
+  optionIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card
+  },
+  optionIconActive: { borderColor: colors.gold, backgroundColor: colors.gold },
+  optionTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
+  optionTitleActive: { color: colors.gold },
+  optionBody: { ...type.caption, color: colors.muted, marginTop: 2 }
 });

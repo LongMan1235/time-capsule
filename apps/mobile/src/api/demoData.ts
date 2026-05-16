@@ -1,4 +1,4 @@
-import type { CapsuleState, EventSummary, MemorySearchResult, SubscriptionTier, Visibility } from "@time-capsule/shared";
+import type { CapsuleState, ContributorScope, EventSummary, MemorySearchResult, SubscriptionTier, Visibility } from "@time-capsule/shared";
 
 export interface DemoUser {
   id: string;
@@ -65,14 +65,17 @@ export const seedEvents: DemoEvent[] = [
   {
     id: "evt-europe-2026",
     title: "Europe Trip 2026",
-    description: "Three weeks across Lisbon, Barcelona, and Florence. The pastry tour, the rooftop sunsets, the train where everyone fell asleep.",
+    description: "Three weeks across Lisbon, Barcelona, and Florence.",
     coverUrl: "https://images.unsplash.com/photo-1493780474015-ba834fd0ce2f?auto=format&fit=crop&w=1600&q=80",
     eventDate: daysAgo(120),
     locationName: "Lisbon, Portugal",
     latitude: 38.7223,
     longitude: -9.1393,
+    collectionClosesAt: daysAgo(110),
     unlockAt: daysFromNow(284),
     visibility: "FRIENDS" as Visibility,
+    contributorScope: "FRIENDS" as ContributorScope,
+    mediaCap: null,
     createdAt: daysAgo(120)
   },
   {
@@ -84,8 +87,11 @@ export const seedEvents: DemoEvent[] = [
     locationName: "Toronto, Canada",
     latitude: 43.6629,
     longitude: -79.3957,
+    collectionClosesAt: daysAgo(40),
     unlockAt: daysFromNow(1825),
     visibility: "FRIENDS" as Visibility,
+    contributorScope: "FRIENDS" as ContributorScope,
+    mediaCap: null,
     createdAt: daysAgo(45)
   },
   {
@@ -97,8 +103,11 @@ export const seedEvents: DemoEvent[] = [
     locationName: "Brooklyn, NY",
     latitude: 40.6782,
     longitude: -73.9442,
+    collectionClosesAt: daysFromNow(2),
     unlockAt: daysFromNow(357),
     visibility: "COLLABORATIVE" as Visibility,
+    contributorScope: "OPEN_LINK" as ContributorScope,
+    mediaCap: 60,
     createdAt: daysAgo(8)
   },
   {
@@ -110,9 +119,12 @@ export const seedEvents: DemoEvent[] = [
     locationName: "Whistler, BC",
     latitude: 50.1163,
     longitude: -122.9574,
+    collectionClosesAt: daysAgo(378),
     unlockAt: daysAgo(15),
     earlyUnlockedAt: daysAgo(15),
     visibility: "FRIENDS" as Visibility,
+    contributorScope: "FRIENDS" as ContributorScope,
+    mediaCap: null,
     createdAt: daysAgo(380)
   },
   {
@@ -124,9 +136,12 @@ export const seedEvents: DemoEvent[] = [
     locationName: "Waterloo, ON",
     latitude: 43.4723,
     longitude: -80.5449,
+    collectionClosesAt: daysAgo(620),
     unlockAt: daysAgo(40),
     earlyUnlockedAt: null,
     visibility: "PRIVATE" as Visibility,
+    contributorScope: "OWNER_ONLY" as ContributorScope,
+    mediaCap: null,
     createdAt: daysAgo(640)
   },
   {
@@ -138,8 +153,11 @@ export const seedEvents: DemoEvent[] = [
     locationName: "Highway 1, California",
     latitude: 36.2704,
     longitude: -121.8081,
+    collectionClosesAt: daysFromNow(5),
     unlockAt: null,
     visibility: "PRIVATE" as Visibility,
+    contributorScope: "OWNER_ONLY" as ContributorScope,
+    mediaCap: null,
     createdAt: daysAgo(2)
   }
 ];
@@ -219,9 +237,18 @@ export function computeMediaCount(eventId: string, media: Record<string, DemoMed
 }
 
 export function computeState(event: DemoEvent): CapsuleState {
-  if (!event.unlockAt) return "DRAFT";
+  const now = Date.now();
+  if (!event.unlockAt && !event.collectionClosesAt) return "DRAFT";
   if (event.earlyUnlockedAt) return "UNLOCKED";
-  return new Date(event.unlockAt).getTime() <= Date.now() ? "UNLOCKED" : "LOCKED";
+
+  const collectionStillOpen = event.collectionClosesAt
+    ? new Date(event.collectionClosesAt).getTime() > now
+    : false;
+
+  if (collectionStillOpen) return "COLLECTING";
+  if (event.unlockAt && new Date(event.unlockAt).getTime() <= now) return "UNLOCKED";
+  if (event.unlockAt) return "LOCKED";
+  return "DRAFT";
 }
 
 export function toEventSummary(event: DemoEvent, media: Record<string, DemoMedia[]>): EventSummary {
@@ -235,8 +262,11 @@ export function toEventSummary(event: DemoEvent, media: Record<string, DemoMedia
     latitude: event.latitude ?? null,
     longitude: event.longitude ?? null,
     unlockAt: event.unlockAt,
+    collectionClosesAt: event.collectionClosesAt ?? null,
     state: computeState(event),
     visibility: event.visibility,
-    mediaCount: computeMediaCount(event.id, media)
+    contributorScope: event.contributorScope,
+    mediaCount: computeMediaCount(event.id, media),
+    mediaCap: event.mediaCap ?? null
   };
 }

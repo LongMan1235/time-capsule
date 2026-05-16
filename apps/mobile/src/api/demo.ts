@@ -164,7 +164,10 @@ interface CreateEventBody {
   locationName?: string;
   eventDate: string;
   unlockAt?: string;
+  collectionClosesAt?: string;
   visibility?: DemoEvent["visibility"];
+  contributorScope?: DemoEvent["contributorScope"];
+  mediaCap?: number | null;
   latitude?: number;
   longitude?: number;
 }
@@ -283,7 +286,10 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
       latitude: body.latitude ?? null,
       longitude: body.longitude ?? null,
       unlockAt: body.unlockAt ?? null,
+      collectionClosesAt: body.collectionClosesAt ?? null,
       visibility: body.visibility ?? "PRIVATE",
+      contributorScope: body.contributorScope ?? "OWNER_ONLY",
+      mediaCap: body.mediaCap ?? null,
       createdAt: new Date().toISOString()
     };
     store.events.unshift(event);
@@ -320,6 +326,12 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
         eventDate: event.eventDate,
         locationName: event.locationName,
         coverUrl: event.coverUrl,
+        unlockAt: event.unlockAt,
+        collectionClosesAt: event.collectionClosesAt,
+        state,
+        visibility: event.visibility,
+        contributorScope: event.contributorScope,
+        mediaCap: event.mediaCap ?? null,
         media
       }
     } as T;

@@ -1,25 +1,22 @@
-import { BlurView } from "expo-blur";
 import { Globe2 } from "lucide-react-native";
-import { useEffect, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import { useEffect, useMemo, useState } from "react";
+import { Dimensions, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../api/client";
+import { Globe, type GlobePoint } from "../components/Globe";
 import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
 import { colors, radii, type } from "../design/theme";
 
-interface MapEvent {
-  id: string;
+interface MapEvent extends GlobePoint {
   title: string;
   locationName?: string;
-  latitude: number;
-  longitude: number;
 }
 
 export function MapScreen() {
   const insets = useSafeAreaInsets();
   const [events, setEvents] = useState<MapEvent[]>([]);
+  const [selectedId, setSelectedId] = useState<string | undefined>();
 
   useEffect(() => {
     api<{ events: MapEvent[] }>("/events/map")
@@ -27,82 +24,63 @@ export function MapScreen() {
       .catch(() => setEvents([]));
   }, []);
 
-  return (
-    <Screen ambient={false} grain={false} edges={[]}>
-      <MapView
-        style={StyleSheet.absoluteFill}
-        initialRegion={{ latitude: 43.6532, longitude: -79.3832, latitudeDelta: 32, longitudeDelta: 32 }}
-        customMapStyle={mapStyle}
-      >
-        {events.map((event) => (
-          <Marker
-            key={event.id}
-            coordinate={{ latitude: event.latitude, longitude: event.longitude }}
-            title={event.title}
-            description={event.locationName}
-          >
-            <View style={styles.pinShell}>
-              <View style={styles.pinDot} />
-            </View>
-          </Marker>
-        ))}
-      </MapView>
+  const selected = useMemo(() => events.find((e) => e.id === selectedId), [events, selectedId]);
+  const size = Math.min(Dimensions.get("window").width, Dimensions.get("window").height) - 60;
 
-      <View pointerEvents="box-none" style={[styles.overlay, { top: insets.top + 12 }]}>
-        <Stagger delay={120}>
-          <View style={styles.headerCard}>
-            {Platform.OS === "ios" ? (
-              <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-            ) : (
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(15,12,22,0.88)" }]} />
-            )}
-            <View style={styles.headerInner}>
-              <Globe2 color={colors.fog} size={16} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.eyebrow}>MEMORY MAP</Text>
-                <Text style={styles.title}>{events.length} {events.length === 1 ? "place" : "places"}</Text>
-              </View>
-            </View>
-          </View>
-        </Stagger>
+  return (
+    <Screen tone="paper" edges={["top", "left", "right"]}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <View style={styles.headerInner}>
+          <Globe2 color={colors.muted} size={14} />
+          <Text style={styles.eyebrow}>MEMORY MAP</Text>
+        </View>
+        <Text style={styles.title}>The world,{"\n"}in pages.</Text>
+        <Text style={styles.subtitle}>
+          {events.length} {events.length === 1 ? "place" : "places"} held in capsules
+        </Text>
       </View>
+
+      <View style={styles.globeWrap}>
+        <Globe size={size} points={events} selectedId={selectedId} onSelect={setSelectedId} />
+      </View>
+
+      <Stagger delay={120}>
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 100 }]}>
+          {selected ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{selected.title}</Text>
+              <Text style={styles.cardMeta}>
+                {selected.locationName ?? "Unknown place"} · {selected.latitude.toFixed(1)}°, {selected.longitude.toFixed(1)}°
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.cardHint}>Drag the globe · tap a pin to see a capsule</Text>
+            </View>
+          )}
+        </View>
+      </Stagger>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { position: "absolute", left: 16, right: 16 },
-  headerCard: {
-    borderRadius: radii.md,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.line
-  },
-  headerInner: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
+  header: { paddingHorizontal: 24, paddingBottom: 12, gap: 6 },
+  headerInner: { flexDirection: "row", alignItems: "center", gap: 8 },
   eyebrow: { ...type.micro, color: colors.muted },
-  title: { ...type.body, color: colors.fog, fontWeight: "600", marginTop: 2 },
-  pinShell: { width: 18, height: 18, alignItems: "center", justifyContent: "center" },
-  pinDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.gold,
-    borderWidth: 2,
-    borderColor: colors.ink
-  }
+  title: { ...type.hero, color: colors.fog, marginTop: 4 },
+  subtitle: { ...type.caption, color: colors.muted },
+  globeWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  footer: { paddingHorizontal: 24 },
+  card: {
+    padding: 14,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card,
+    gap: 6
+  },
+  cardTitle: { ...type.subtitle, color: colors.fog, fontWeight: "600" },
+  cardMeta: { ...type.caption, color: colors.muted },
+  cardHint: { ...type.caption, color: colors.muted, textAlign: "center" }
 });
-
-const mapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#15131D" }] },
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#9C95A0" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#0B0A10" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ visibility: "off" }] },
-  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#1F1A28" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ visibility: "off" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#2A2336" }] },
-  { featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", stylers: [{ visibility: "off" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0E1622" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3B5B7A" }] }
-];

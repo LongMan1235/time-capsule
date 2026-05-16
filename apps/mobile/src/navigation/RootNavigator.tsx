@@ -9,6 +9,7 @@ import { colors, radii } from "../design/theme";
 import type { IconComponent } from "../design/icons";
 import { useSessionStore } from "../store/session";
 import { AuthScreen } from "../screens/AuthScreen";
+import { CameraCaptureScreen } from "../screens/CameraCaptureScreen";
 import { CountdownScreen } from "../screens/CountdownScreen";
 import { CreateEventScreen } from "../screens/CreateEventScreen";
 import { EventDetailScreen } from "../screens/EventDetailScreen";
@@ -26,6 +27,7 @@ export type RootStackParamList = {
   EventDetail: { eventId: string };
   Countdown: { eventId: string; title: string; unlockAt: string; createdAt?: string };
   CreateEvent: undefined;
+  CameraCapture: { eventId: string; title: string };
   Paywall: undefined;
 };
 
@@ -134,6 +136,7 @@ export function RootNavigator() {
           <Stack.Screen name="EventDetail" component={EventDetailScreen} options={{ animation: "slide_from_right" }} />
           <Stack.Screen name="Countdown" component={CountdownScreen} options={{ animation: "fade", presentation: "modal" }} />
           <Stack.Screen name="CreateEvent" component={CreateEventScreen} options={{ animation: "slide_from_bottom" }} />
+          <Stack.Screen name="CameraCapture" component={CameraCaptureScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
           <Stack.Screen name="Paywall" component={PaywallScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
         </>
       ) : (

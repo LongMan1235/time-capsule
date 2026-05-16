@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { ArrowLeft, ImagePlus, MapPin } from "lucide-react-native";
+import { ArrowLeft, Camera, Hourglass, ImagePlus, Lock, MapPin } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Dimensions, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { CapsuleState } from "@time-capsule/shared";
 import { api } from "../api/client";
 import { pickAndUploadMedia } from "../api/uploads";
 import { AnimatedPressable } from "../components/AnimatedPressable";
@@ -13,7 +14,7 @@ import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
 import { colors, radii, type } from "../design/theme";
 import type { RootStackParamList } from "../navigation/RootNavigator";
-import { formatDate } from "../utils/dates";
+import { daysUntil, formatDate, timeUntil } from "../utils/dates";
 
 interface Media {
   id: string;
@@ -30,11 +31,15 @@ interface EventDetail {
   eventDate: string;
   locationName?: string;
   coverUrl?: string | null;
+  unlockAt?: string | null;
+  collectionClosesAt?: string | null;
+  state?: CapsuleState;
+  mediaCap?: number | null;
   media: Media[];
 }
 
-const HERO_HEIGHT = 300;
-const fallbackCover = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80";
+const HERO_HEIGHT = 280;
+const fallbackCover = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=70";
 
 export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, "EventDetail">) {
   const insets = useSafeAreaInsets();
@@ -49,7 +54,7 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load event"));
   }
 
-  async function upload() {
+  async function pickFromLibrary() {
     try {
       setUploading(true);
       await pickAndUploadMedia(route.params.eventId);
@@ -61,13 +66,25 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
     }
   }
 
+  function openCamera() {
+    if (!event) return;
+    navigation.navigate("CameraCapture", { eventId: event.id, title: event.title });
+  }
+
   useEffect(() => {
     load();
   }, [route.params.eventId]);
 
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      load();
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   if (error) {
     return (
-      <Screen>
+      <Screen tone="paper">
         <View style={styles.center}><Text style={styles.error}>{error}</Text></View>
       </Screen>
     );
@@ -75,18 +92,26 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
 
   if (!event) {
     return (
-      <Screen>
+      <Screen tone="paper">
         <View style={styles.center}><ActivityIndicator color={colors.gold} /></View>
       </Screen>
     );
   }
 
-  const heroScale = scrollY.interpolate({ inputRange: [-200, 0], outputRange: [1.35, 1], extrapolate: "clamp" });
+  const collecting = event.state === "COLLECTING" || event.state === "DRAFT";
+  const sealed = event.state === "LOCKED";
+  const collectionClosesIn = event.collectionClosesAt ? daysUntil(event.collectionClosesAt) : 0;
+  const collectionMinutesLeft = event.collectionClosesAt
+    ? Math.max(0, Math.floor(timeUntil(event.collectionClosesAt).totalMs / 60_000))
+    : 0;
+  const capReached = !!event.mediaCap && event.media.length >= event.mediaCap;
+
+  const heroScale = scrollY.interpolate({ inputRange: [-200, 0], outputRange: [1.30, 1], extrapolate: "clamp" });
   const heroTranslate = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT], outputRange: [0, -HERO_HEIGHT / 2], extrapolate: "clamp" });
-  const heroOpacity = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT * 0.8], outputRange: [1, 0.3], extrapolate: "clamp" });
+  const heroOpacity = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT * 0.8], outputRange: [0.8, 0.2], extrapolate: "clamp" });
 
   return (
-    <Screen edges={[]} ambient={false} grain={false}>
+    <Screen tone="paper" edges={[]} texture={false}>
       <Animated.View
         style={[
           styles.hero,
@@ -94,7 +119,7 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         ]}
       >
         <Image source={{ uri: event.coverUrl ?? fallbackCover }} style={StyleSheet.absoluteFill} contentFit="cover" transition={500} />
-        <LinearGradient colors={["rgba(0,0,0,0.10)", "rgba(0,0,0,0.55)", "rgba(11,10,16,0.95)"]} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={["rgba(15,13,20,0.35)", "rgba(15,13,20,0.75)", "rgba(15,13,20,1)"]} style={StyleSheet.absoluteFill} />
       </Animated.View>
 
       <View style={[styles.topBar, { top: insets.top + 8 }]} pointerEvents="box-none">
@@ -108,14 +133,17 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         numColumns={2}
         keyExtractor={(item) => item.id}
         columnWrapperStyle={styles.columns}
-        contentContainerStyle={[styles.content, { paddingTop: HERO_HEIGHT - 60 }]}
+        contentContainerStyle={[styles.content, { paddingTop: HERO_HEIGHT - 80, paddingBottom: insets.bottom + 140 }]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
         ListHeaderComponent={
           <View style={styles.headerCard}>
             <Stagger delay={120}>
-              <Text style={styles.date}>{formatDate(event.eventDate)}</Text>
+              <View style={styles.row}>
+                <Text style={styles.date}>{formatDate(event.eventDate)}</Text>
+                <StatusPill state={event.state} />
+              </View>
             </Stagger>
             <Stagger delay={220}>
               <Text style={styles.title}>{event.title}</Text>
@@ -133,17 +161,61 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
                 <Text style={styles.description}>{event.description}</Text>
               </Stagger>
             ) : null}
-            <Stagger delay={520} style={{ marginTop: 16 }}>
-              <PrimaryButton onPress={upload} loading={uploading} icon={ImagePlus} variant="ghost">
-                Add memory
-              </PrimaryButton>
-            </Stagger>
+
+            {collecting && event.collectionClosesAt ? (
+              <Stagger delay={520}>
+                <View style={styles.windowCard}>
+                  <Hourglass color={colors.gold} size={14} />
+                  <Text style={styles.windowText}>
+                    {collectionClosesIn > 0
+                      ? `${collectionClosesIn} ${collectionClosesIn === 1 ? "day" : "days"} left to add memories`
+                      : `${collectionMinutesLeft} min left to add memories`}
+                  </Text>
+                </View>
+              </Stagger>
+            ) : null}
+
+            {sealed ? (
+              <Stagger delay={520}>
+                <View style={styles.windowCard}>
+                  <Lock color={colors.muted} size={14} />
+                  <Text style={[styles.windowText, { color: colors.muted }]}>
+                    Sealed. Reopens {event.unlockAt ? formatDate(event.unlockAt) : "soon"}.
+                  </Text>
+                </View>
+              </Stagger>
+            ) : null}
+
+            {collecting ? (
+              <Stagger delay={620} style={styles.captureRow}>
+                <View style={{ flex: 1 }}>
+                  <PrimaryButton onPress={openCamera} icon={Camera} disabled={capReached}>
+                    Camera
+                  </PrimaryButton>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <PrimaryButton onPress={pickFromLibrary} loading={uploading} icon={ImagePlus} variant="ghost" disabled={capReached}>
+                    Library
+                  </PrimaryButton>
+                </View>
+              </Stagger>
+            ) : null}
+
+            {capReached ? (
+              <Text style={styles.capNote}>You've reached the {event.mediaCap}-photo cap.</Text>
+            ) : event.mediaCap ? (
+              <Text style={styles.capNote}>{event.media.length} / {event.mediaCap} photos</Text>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Empty capsule</Text>
-            <Text style={styles.emptyBody}>Add a photo, video, or voice note.</Text>
+            <Text style={styles.emptyTitle}>{sealed ? "Memories sealed" : "Empty page"}</Text>
+            <Text style={styles.emptyBody}>
+              {sealed
+                ? "This capsule will reveal its memories when it unlocks."
+                : "Capture or upload a photo to start filling this capsule."}
+            </Text>
           </View>
         }
         renderItem={({ item, index }) => (
@@ -155,6 +227,16 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         )}
       />
     </Screen>
+  );
+}
+
+function StatusPill({ state }: { state?: CapsuleState }) {
+  if (!state) return null;
+  const label = state === "LOCKED" ? "SEALED" : state === "UNLOCKED" ? "OPEN" : state === "COLLECTING" ? "COLLECTING" : "DRAFT";
+  return (
+    <View style={styles.statusPill}>
+      <Text style={styles.statusText}>{label}</Text>
+    </View>
   );
 }
 
@@ -176,24 +258,48 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     backgroundColor: "rgba(11,10,16,0.55)"
   },
-  content: { paddingHorizontal: 20, paddingBottom: 140 },
+  content: { paddingHorizontal: 20 },
   headerCard: {
     padding: 18,
     borderRadius: radii.lg,
-    backgroundColor: "rgba(11,10,16,0.86)",
+    backgroundColor: colors.cardElevated,
     borderWidth: 1,
     borderColor: colors.line,
     marginBottom: 16,
     gap: 8
   },
-  date: { ...type.caption, color: colors.gold },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  date: { ...type.caption, color: colors.muted },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.line
+  },
+  statusText: { ...type.micro, color: colors.muted, letterSpacing: 1.2 },
   title: { ...type.hero, color: colors.fog, marginTop: 2 },
   locationRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
   locationText: { ...type.caption, color: colors.muted },
   description: { ...type.body, color: colors.muted, marginTop: 6 },
+  windowCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "rgba(232,194,107,0.25)",
+    backgroundColor: "rgba(232,194,107,0.06)",
+    marginTop: 6
+  },
+  windowText: { ...type.caption, color: colors.fog, flex: 1 },
+  captureRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  capNote: { ...type.micro, color: colors.muted, marginTop: 8, letterSpacing: 1 },
   empty: { paddingVertical: 40, gap: 6, alignItems: "center" },
   emptyTitle: { ...type.heading, color: colors.fog },
-  emptyBody: { ...type.body, color: colors.muted },
+  emptyBody: { ...type.body, color: colors.muted, textAlign: "center", paddingHorizontal: 24 },
   columns: { gap: 10, marginBottom: 10 },
   tile: {
     width: tileSize,

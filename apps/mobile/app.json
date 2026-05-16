@@ -29,7 +29,13 @@
       "expo-notifications",
       "expo-image-picker",
       "expo-location",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Time Capsule to capture photos for your memory capsules."
+        }
+      ]
     ]
   }
 }

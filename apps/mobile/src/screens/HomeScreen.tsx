@@ -69,7 +69,7 @@ export function HomeScreen() {
   const headerOpacity = scrollY.interpolate({ inputRange: [0, 80], outputRange: [1, 0.7], extrapolate: "clamp" });
 
   return (
-    <Screen edges={["top", "left", "right"]}>
+    <Screen tone="paper" edges={["top", "left", "right"]}>
       <Animated.FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
@@ -84,8 +84,9 @@ export function HomeScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.eyebrow}>{greeting.toUpperCase()}</Text>
                 <Text style={styles.title}>
-                  {displayName ? `Hello, ${displayName}` : "Your archive"}
+                  {displayName ? `Hello, ${displayName}` : "Your scrapbook"}
                 </Text>
+                <Text style={styles.subtitle}>{counts.all} {counts.all === 1 ? "page" : "pages"}</Text>
               </View>
               <AnimatedPressable onPress={() => navigation.navigate("CreateEvent")} style={styles.createPill}>
                 <Plus color={colors.fog} size={16} />
@@ -144,9 +145,10 @@ function greetingForNow() {
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 140 },
-  topBar: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 24 },
+  topBar: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 24 },
   eyebrow: { ...type.micro, color: colors.muted },
   title: { ...type.hero, color: colors.fog, marginTop: 4 },
+  subtitle: { ...type.caption, color: colors.muted, marginTop: 4 },
   createPill: {
     width: 40,
     height: 40,
