@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: timecapsule
+      POSTGRES_PASSWORD: timecapsule
+      POSTGRES_DB: timecapsule
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  ai-search:
+    build:
+      context: ../services/ai-search
+    ports:
+      - "7000:7000"
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - ../.env
+    depends_on:
+      - postgres
+      - redis
+      - minio
+      - ai-search
+    ports:
+      - "4000:4000"
+
+volumes:
+  postgres-data:
+  minio-data:

@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Time Capsule",
+    "slug": "time-capsule",
+    "scheme": "timecapsule",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.timecapsule.mobile"
+    },
+    "android": {
+      "package": "app.timecapsule.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#101014"
+      }
+    },
+    "extra": {
+      "apiUrl": "http://localhost:4000",
+      "apiMode": "demo",
+      "mapboxPublicToken": ""
+    },
+    "plugins": ["expo-notifications", "expo-image-picker", "expo-location"]
+  }
+}

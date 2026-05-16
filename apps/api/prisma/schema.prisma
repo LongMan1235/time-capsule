@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AuthProvider {
+  GOOGLE
+  APPLE
+}
+
+enum Visibility {
+  PRIVATE
+  FRIENDS
+  COLLABORATIVE
+}
+
+enum MediaKind {
+  PHOTO
+  VIDEO
+  VOICE_NOTE
+}
+
+enum SubscriptionTier {
+  FREE
+  PLUS
+  PREMIUM
+}
+
+enum CollaboratorRole {
+  VIEWER
+  CONTRIBUTOR
+  OWNER
+}
+
+enum PrivacyRequestKind {
+  EXPORT_DATA
+  DELETE_ACCOUNT
+  DELETE_AI_EMBEDDINGS
+}
+
+enum PrivacyRequestStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id             String        @id @default(cuid())
+  email          String        @unique
+  username       String        @unique
+  displayName    String
+  passwordHash   String?
+  avatarKey      String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  authAccounts   AuthAccount[]
+  profile        Profile?
+  subscription   Subscription?
+  events         Event[]       @relation("OwnedEvents")
+  collaborations EventCollaborator[]
+  uploadedMedia  Media[]
+  comments       Comment[]
+  identities     FaceIdentity[]
+  privacyRequests PrivacyRequest[]
+}
+
+model AuthAccount {
+  id             String       @id @default(cuid())
+  provider       AuthProvider
+  providerUserId String
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+}
+
+model Profile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio                  String?
+  expoPushToken        String?
+  aiOptIn              Boolean  @default(false)
+  faceRecognitionOptIn Boolean  @default(false)
+  storageUsedBytes     BigInt   @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Subscription {
+  id                   String           @id @default(cuid())
+  userId               String           @unique
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier                 SubscriptionTier @default(FREE)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+}
+
+model FriendConnection {
+  id          String   @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([requesterId, addresseeId])
+}
+
+model Event {
+  id              String              @id @default(cuid())
+  ownerId         String
+  owner           User                @relation("OwnedEvents", fields: [ownerId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  coverImageKey   String?
+  eventDate       DateTime
+  locationName    String?
+  latitude        Float?
+  longitude       Float?
+  visibility      Visibility          @default(PRIVATE)
+  unlockAt        DateTime?
+  lockedAt        DateTime?
+  earlyUnlockedAt DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  media           Media[]
+  comments        Comment[]
+  collaborators   EventCollaborator[]
+  aiIndexes       AiIndexJob[]
+
+  @@index([ownerId, eventDate])
+  @@index([unlockAt])
+  @@index([latitude, longitude])
+}
+
+model EventCollaborator {
+  id        String           @id @default(cuid())
+  eventId   String
+  event     Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      CollaboratorRole @default(VIEWER)
+  createdAt DateTime         @default(now())
+
+  @@unique([eventId, userId])
+}
+
+model Media {
+  id           String       @id @default(cuid())
+  eventId      String
+  event        Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+  kind         MediaKind
+  storageKey   String
+  url          String
+  caption      String?
+  capturedAt   DateTime?
+  durationMs   Int?
+  width        Int?
+  height       Int?
+  sizeBytes    Int
+  createdAt    DateTime     @default(now())
+  embeddings   MediaEmbedding[]
+  faceMatches  FaceMatch[]
+
+  @@index([eventId, capturedAt])
+  @@index([uploadedById])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model MediaEmbedding {
+  id              String   @id @default(cuid())
+  mediaId         String
+  media           Media    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  model           String
+  vectorRef       String
+  encryptedDigest String
+  createdAt       DateTime @default(now())
+
+  @@index([mediaId])
+}
+
+model FaceIdentity {
+  id              String   @id @default(cuid())
+  ownerUserId     String
+  ownerUser       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  displayName     String
+  subjectUserId   String?
+  consentGranted  Boolean  @default(false)
+  encryptedCentroidRef String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  matches         FaceMatch[]
+  feedback        IdentityFeedback[]
+
+  @@index([ownerUserId])
+}
+
+model FaceMatch {
+  id          String       @id @default(cuid())
+  mediaId     String
+  media       Media        @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  identityId  String
+  identity    FaceIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  confidence  Float
+  boundingBox Json
+  createdAt   DateTime     @default(now())
+
+  @@index([mediaId])
+  @@index([identityId])
+}
+
+model IdentityFeedback {
+  id         String       @id @default(cuid())
+  identityId String
+  identity   FaceIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  mediaId    String
+  accepted   Boolean
+  createdAt  DateTime     @default(now())
+}
+
+model AiIndexJob {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  status    String   @default("PENDING")
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PrivacyRequest {
+  id        String               @id @default(cuid())
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      PrivacyRequestKind
+  status    PrivacyRequestStatus @default(PENDING)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+}
