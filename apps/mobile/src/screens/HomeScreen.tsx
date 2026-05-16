@@ -1,6 +1,6 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
-import { Plus, Sparkles } from "lucide-react-native";
+import { Plus } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { EventSummary } from "@time-capsule/shared";
@@ -11,9 +11,8 @@ import { MemoryCard } from "../components/MemoryCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
-import { colors, gradients, radii, shadow, type } from "../design/theme";
+import { colors, radii, type } from "../design/theme";
 import type { RootStackParamList } from "../navigation/RootNavigator";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSessionStore } from "../store/session";
 
 type Filter = "all" | "locked" | "open" | "draft";
@@ -41,7 +40,7 @@ export function HomeScreen() {
       const response = await api<{ events: EventSummary[] }>("/events");
       setEvents(response.events);
     } catch {
-      // surface via empty state — keep silent for now
+      // empty state will show
     } finally {
       setRefreshing(false);
     }
@@ -53,12 +52,10 @@ export function HomeScreen() {
 
   const counts = useMemo(() => ({
     all: events.length,
-    locked: events.filter((event) => event.state === "LOCKED").length,
-    open: events.filter((event) => event.state === "UNLOCKED").length,
-    draft: events.filter((event) => event.state === "DRAFT").length
+    locked: events.filter((e) => e.state === "LOCKED").length,
+    open: events.filter((e) => e.state === "UNLOCKED").length,
+    draft: events.filter((e) => e.state === "DRAFT").length
   }), [events]);
-
-  const filteredOptions = filterOptions.map((option) => ({ ...option, count: counts[option.value] }));
 
   const filtered = useMemo(() => {
     switch (filter) {
@@ -69,8 +66,7 @@ export function HomeScreen() {
     }
   }, [events, filter]);
 
-  const heroOpacity = scrollY.interpolate({ inputRange: [0, 90], outputRange: [1, 0.65], extrapolate: "clamp" });
-  const heroTranslate = scrollY.interpolate({ inputRange: [0, 120], outputRange: [0, -28], extrapolate: "clamp" });
+  const headerOpacity = scrollY.interpolate({ inputRange: [0, 80], outputRange: [1, 0.7], extrapolate: "clamp" });
 
   return (
     <Screen edges={["top", "left", "right"]}>
@@ -83,45 +79,31 @@ export function HomeScreen() {
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
         ListHeaderComponent={
-          <Animated.View style={{ opacity: heroOpacity, transform: [{ translateY: heroTranslate }] }}>
+          <Animated.View style={{ opacity: headerOpacity }}>
             <View style={styles.topBar}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.eyebrow}>YOUR ARCHIVE</Text>
-                <Text style={styles.greeting}>
-                  {greeting}
-                  {displayName ? (
-                    <>
-                      , <Text style={styles.greetingAccent}>{displayName}</Text>
-                    </>
-                  ) : null}
+                <Text style={styles.eyebrow}>{greeting.toUpperCase()}</Text>
+                <Text style={styles.title}>
+                  {displayName ? `Hello, ${displayName}` : "Your archive"}
                 </Text>
               </View>
-              <AnimatedPressable onPress={() => navigation.navigate("CreateEvent")} style={[styles.createPill, shadow.glow]}>
-                <LinearGradient colors={gradients.gold} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.createPillFill}>
-                  <Plus color={colors.ink} size={18} />
-                  <Text style={styles.createPillText}>New capsule</Text>
-                </LinearGradient>
+              <AnimatedPressable onPress={() => navigation.navigate("CreateEvent")} style={styles.createPill}>
+                <Plus color={colors.fog} size={16} />
               </AnimatedPressable>
             </View>
 
-            <Stagger delay={120}>
-              <Text style={styles.title}>Capsules waiting{"\n"}for their moment.</Text>
-            </Stagger>
-
-            <Stagger delay={260} style={styles.statRow}>
-              <StatPill label="Sealed" value={counts.locked} accent />
-              <StatPill label="Open" value={counts.open} />
-              <StatPill label="Drafts" value={counts.draft} />
-            </Stagger>
-
-            <Stagger delay={400} style={{ marginTop: 18 }}>
-              <FilterChips options={filteredOptions} value={filter} onChange={setFilter} />
+            <Stagger delay={140} style={styles.filterRow}>
+              <FilterChips
+                options={filterOptions.map((opt) => ({ ...opt, count: counts[opt.value] }))}
+                value={filter}
+                onChange={setFilter}
+              />
             </Stagger>
           </Animated.View>
         }
-        ItemSeparatorComponent={() => <View style={{ height: 4 }} />}
+        ItemSeparatorComponent={() => <View style={{ height: 0 }} />}
         renderItem={({ item, index }) => (
-          <Stagger delay={120 + index * 80} translate={24}>
+          <Stagger delay={80 + index * 60} translate={16}>
             <MemoryCard
               event={item}
               featured={index === 0 && filter === "all"}
@@ -134,17 +116,14 @@ export function HomeScreen() {
           </Stagger>
         )}
         ListEmptyComponent={
-          <Stagger delay={300}>
+          <Stagger delay={200}>
             <View style={styles.empty}>
-              <View style={styles.emptyIcon}>
-                <Sparkles color={colors.gold} size={28} />
-              </View>
               <Text style={styles.emptyTitle}>No capsules yet</Text>
               <Text style={styles.emptyBody}>
                 Start with a trip, a birthday, or a week you do not want to disappear into the camera roll.
               </Text>
               <PrimaryButton onPress={() => navigation.navigate("CreateEvent")} icon={Plus}>
-                Create your first capsule
+                Create capsule
               </PrimaryButton>
             </View>
           </Stagger>
@@ -163,52 +142,23 @@ function greetingForNow() {
   return "Up late";
 }
 
-function StatPill({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <View style={[styles.stat, accent ? styles.statAccent : null]}>
-      <Text style={[styles.statValue, accent ? styles.statValueAccent : null]}>{value}</Text>
-      <Text style={[styles.statLabel, accent ? styles.statLabelAccent : null]}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 140 },
-  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 22 },
-  eyebrow: { ...type.micro, color: colors.gold },
-  greeting: { ...type.subtitle, color: colors.fog, marginTop: 4 },
-  greetingAccent: { color: colors.gold, fontWeight: "800" },
-  createPill: { borderRadius: radii.pill, overflow: "hidden" },
-  createPillFill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10 },
-  createPillText: { color: colors.ink, fontWeight: "800", fontSize: 13 },
-  title: { ...type.hero, color: colors.fog, marginBottom: 22 },
-  statRow: { flexDirection: "row", gap: 10 },
-  stat: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: "rgba(255,255,255,0.04)"
-  },
-  statAccent: { borderColor: "rgba(232,194,107,0.40)", backgroundColor: "rgba(232,194,107,0.10)" },
-  statValue: { ...type.title, color: colors.fog, fontVariant: ["tabular-nums"] },
-  statValueAccent: { color: colors.gold },
-  statLabel: { ...type.caption, color: colors.muted, marginTop: 4 },
-  statLabelAccent: { color: colors.goldDeep },
-  empty: { alignItems: "center", gap: 14, paddingVertical: 60 },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 140 },
+  topBar: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 24 },
+  eyebrow: { ...type.micro, color: colors.muted },
+  title: { ...type.hero, color: colors.fog, marginTop: 4 },
+  createPill: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(232,194,107,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(232,194,107,0.35)",
-    marginBottom: 6
+    borderColor: colors.lineBright,
+    backgroundColor: colors.card
   },
+  filterRow: { marginBottom: 20 },
+  empty: { alignItems: "center", gap: 12, paddingVertical: 60, paddingHorizontal: 12 },
   emptyTitle: { ...type.title, color: colors.fog, textAlign: "center" },
-  emptyBody: { ...type.body, color: colors.muted, textAlign: "center", paddingHorizontal: 12 }
+  emptyBody: { ...type.body, color: colors.muted, textAlign: "center" }
 });

@@ -1,7 +1,8 @@
 import { useNavigation } from "@react-navigation/native";
-import { CalendarClock, Heading2, Lock, MapPin, Sparkles, X } from "lucide-react-native";
+import { CalendarClock, Heading2, MapPin, X } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../api/client";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -28,6 +29,7 @@ function localDateLabel(iso: string) {
 
 export function CreateEventScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [locationName, setLocationName] = useState("");
@@ -64,16 +66,16 @@ export function CreateEventScreen() {
   }
 
   return (
-    <Screen>
+    <Screen edges={["left", "right"]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <AnimatedPressable onPress={() => navigation.goBack()} style={styles.close}>
             <X color={colors.fog} size={20} />
           </AnimatedPressable>
           <Text style={styles.eyebrow}>NEW CAPSULE</Text>
           <View style={styles.close} />
         </View>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]} keyboardShouldPersistTaps="handled">
           <Stagger delay={80}>
             <Text style={styles.title}>What do you want{"\n"}future-you to feel?</Text>
           </Stagger>
@@ -88,7 +90,7 @@ export function CreateEventScreen() {
               maxLength={64}
             />
             <View style={styles.textAreaWrap}>
-              <Text style={styles.label}>NOTE FOR FUTURE-YOU</Text>
+              <Text style={styles.label}>NOTE</Text>
               <TextInput
                 value={description}
                 onChangeText={setDescription}
@@ -112,7 +114,7 @@ export function CreateEventScreen() {
             <View style={styles.unlockBlock}>
               <View style={styles.unlockHead}>
                 <View style={styles.unlockHeadInner}>
-                  <CalendarClock color={colors.gold} size={18} />
+                  <CalendarClock color={colors.muted} size={16} />
                   <Text style={styles.unlockTitle}>Unlock date</Text>
                 </View>
                 <Text style={styles.unlockValue}>{dateLabel}</Text>
@@ -134,16 +136,12 @@ export function CreateEventScreen() {
                   );
                 })}
               </View>
-              <View style={styles.privacyNote}>
-                <Lock size={12} color={colors.muted} />
-                <Text style={styles.privacyText}>Sealed until {dateLabel}. Early unlock available later from billing.</Text>
-              </View>
             </View>
           </Stagger>
 
           <Stagger delay={500}>
-            <PrimaryButton onPress={create} loading={saving} icon={Sparkles}>
-              Seal this capsule
+            <PrimaryButton onPress={create} loading={saving}>
+              Seal capsule
             </PrimaryButton>
           </Stagger>
         </ScrollView>
@@ -158,8 +156,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 4,
+    paddingHorizontal: 16,
     paddingBottom: 8
   },
   close: {
@@ -170,22 +167,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: "rgba(255,255,255,0.04)"
+    backgroundColor: colors.card
   },
-  eyebrow: { ...type.micro, color: colors.gold },
-  content: { padding: 24, paddingBottom: 140, gap: 22 },
+  eyebrow: { ...type.micro, color: colors.muted },
+  content: { padding: 24, gap: 22 },
   title: { ...type.hero, color: colors.fog },
   fields: { gap: 14 },
   textAreaWrap: { gap: 8 },
   label: { ...type.micro, color: colors.muted },
   textArea: {
-    minHeight: 130,
+    minHeight: 110,
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: colors.card,
     color: colors.fog,
     ...type.body,
     textAlignVertical: "top"
@@ -194,26 +191,24 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: colors.card,
     padding: 16,
     gap: 14
   },
   unlockHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   unlockHeadInner: { flexDirection: "row", alignItems: "center", gap: 8 },
-  unlockTitle: { ...type.subtitle, color: colors.fog, fontWeight: "700" },
-  unlockValue: { ...type.body, color: colors.gold, fontWeight: "700" },
+  unlockTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
+  unlockValue: { ...type.caption, color: colors.muted },
   presetRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   preset: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: "rgba(255,255,255,0.04)"
+    backgroundColor: colors.card
   },
   presetActive: { backgroundColor: colors.fog, borderColor: colors.fog },
-  presetLabel: { ...type.caption, color: colors.fog, fontWeight: "700" },
-  presetLabelActive: { color: colors.ink },
-  privacyNote: { flexDirection: "row", alignItems: "center", gap: 6 },
-  privacyText: { ...type.caption, color: colors.muted }
+  presetLabel: { ...type.caption, color: colors.fog, fontWeight: "600" },
+  presetLabelActive: { color: colors.ink }
 });

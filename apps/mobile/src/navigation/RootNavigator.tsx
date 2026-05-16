@@ -4,7 +4,8 @@ import { BlurView } from "expo-blur";
 import { CalendarPlus, Map, Search, Settings, Sparkles } from "lucide-react-native";
 import { useEffect, useRef, type ComponentType } from "react";
 import { ActivityIndicator, Animated, Platform, Pressable, StyleSheet, View } from "react-native";
-import { colors, radii, shadow } from "../design/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, radii } from "../design/theme";
 import type { IconComponent } from "../design/icons";
 import { useSessionStore } from "../store/session";
 import { AuthScreen } from "../screens/AuthScreen";
@@ -31,22 +32,25 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
-const tabs: Array<{ name: string; component: ComponentType<any>; icon: IconComponent; label: string }> = [
-  { name: "Home", component: HomeScreen, icon: Sparkles, label: "Capsules" },
-  { name: "Map", component: MapScreen, icon: Map, label: "Map" },
-  { name: "Create", component: CreateEventScreen, icon: CalendarPlus, label: "Create" },
-  { name: "Search", component: SearchScreen, icon: Search, label: "Search" },
-  { name: "Privacy", component: PrivacyScreen, icon: Settings, label: "Privacy" }
+const tabs: Array<{ name: string; component: ComponentType<any>; icon: IconComponent }> = [
+  { name: "Home", component: HomeScreen, icon: Sparkles },
+  { name: "Map", component: MapScreen, icon: Map },
+  { name: "Create", component: CreateEventScreen, icon: CalendarPlus },
+  { name: "Search", component: SearchScreen, icon: Search },
+  { name: "Privacy", component: PrivacyScreen, icon: Settings }
 ];
 
 function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const bottomOffset = Math.max(insets.bottom + 8, 16);
+
   return (
-    <View pointerEvents="box-none" style={styles.tabBarWrap}>
-      <View style={[styles.tabBar, shadow.card]}>
+    <View pointerEvents="box-none" style={[styles.tabBarWrap, { bottom: bottomOffset }]}>
+      <View style={styles.tabBar}>
         {Platform.OS === "ios" ? (
-          <BlurView intensity={38} tint="dark" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
         ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(15,12,22,0.92)" }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(15,12,22,0.94)" }]} />
         )}
         <View style={styles.tabBarBorder} pointerEvents="none" />
         {state.routes.map((route, index) => {
@@ -77,22 +81,18 @@ function TabButton({
   focused: boolean;
   onPress: () => void;
 }) {
-  const scale = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.spring(scale, { toValue: focused ? 1 : 0, useNativeDriver: true, friction: 7, tension: 160 }).start();
-  }, [focused, scale]);
+    Animated.spring(progress, { toValue: focused ? 1 : 0, useNativeDriver: true, friction: 8, tension: 140 }).start();
+  }, [focused, progress]);
 
-  const dotScale = scale.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] });
-  const dotOpacity = scale.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
-  const iconScale = scale.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
-  const iconTranslate = scale.interpolate({ inputRange: [0, 1], outputRange: [0, -2] });
+  const dotOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  const dotScale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
 
   return (
     <Pressable onPress={onPress} style={styles.tabButton} hitSlop={10}>
-      <Animated.View style={{ transform: [{ scale: iconScale }, { translateY: iconTranslate }] }}>
-        <Icon color={focused ? colors.gold : colors.muted} size={22} />
-      </Animated.View>
+      <Icon color={focused ? colors.fog : colors.muted} size={20} />
       <Animated.View style={[styles.activeDot, { opacity: dotOpacity, transform: [{ scale: dotScale }] }]} />
     </Pressable>
   );
@@ -149,9 +149,8 @@ export function RootNavigator() {
 const styles = StyleSheet.create({
   tabBarWrap: {
     position: "absolute",
-    left: 18,
-    right: 18,
-    bottom: Platform.OS === "ios" ? 22 : 16,
+    left: 20,
+    right: 20,
     alignItems: "center"
   },
   tabBar: {
@@ -159,10 +158,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-around",
     width: "100%",
-    height: 64,
+    height: 56,
     borderRadius: radii.pill,
     overflow: "hidden",
-    backgroundColor: Platform.OS === "ios" ? "rgba(15,12,22,0.55)" : "rgba(15,12,22,0.92)"
+    backgroundColor: Platform.OS === "ios" ? "rgba(15,12,22,0.50)" : "rgba(15,12,22,0.94)"
   },
   tabBarBorder: {
     ...StyleSheet.absoluteFillObject,
@@ -174,17 +173,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12
+    gap: 4,
+    paddingVertical: 10
   },
   activeDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 5,
-    backgroundColor: colors.gold,
-    shadowColor: colors.gold,
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 0 }
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.fog
   }
 });

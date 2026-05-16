@@ -19,25 +19,18 @@ export function CountdownTicker({ unlockAt, createdAt, compact = false }: Props)
 
   if (compact) {
     return (
-      <View style={styles.compactRow}>
-        <Text style={styles.compactValue}>{parts.days}d</Text>
-        <Text style={styles.compactDivider}>·</Text>
-        <Text style={styles.compactValue}>{padDigits(parts.hours)}h</Text>
-        <Text style={styles.compactDivider}>·</Text>
-        <Text style={styles.compactValue}>{padDigits(parts.minutes)}m</Text>
-      </View>
+      <Text style={styles.compact}>
+        {parts.days}d {padDigits(parts.hours)}h {padDigits(parts.minutes)}m
+      </Text>
     );
   }
 
   return (
     <View style={styles.row}>
-      <Unit value={parts.days} label="days" />
-      <Divider />
-      <Unit value={parts.hours} label="hours" pad />
-      <Divider />
-      <Unit value={parts.minutes} label="min" pad />
-      <Divider />
-      <Unit value={parts.seconds} label="sec" pad accent />
+      <Unit value={parts.days} label="DAYS" />
+      <Unit value={parts.hours} label="HRS" pad />
+      <Unit value={parts.minutes} label="MIN" pad />
+      <Unit value={parts.seconds} label="SEC" pad accent />
     </View>
   );
 }
@@ -51,31 +44,11 @@ function Unit({ value, label, pad = false, accent = false }: { value: number; la
   );
 }
 
-function Divider() {
-  return <View style={styles.divider} />;
-}
-
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "flex-end", gap: 12 },
-  unit: { alignItems: "center", minWidth: 64 },
-  value: {
-    ...type.hero,
-    color: colors.fog,
-    fontVariant: ["tabular-nums"]
-  },
+  row: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  unit: { alignItems: "center", minWidth: 56, flex: 1 },
+  value: { ...type.hero, color: colors.fog, fontVariant: ["tabular-nums"] },
   accent: { color: colors.gold },
-  label: {
-    ...type.micro,
-    color: colors.muted,
-    marginTop: 6
-  },
-  divider: {
-    width: 1,
-    height: 28,
-    backgroundColor: colors.line,
-    marginBottom: 22
-  },
-  compactRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  compactValue: { color: colors.fog, fontWeight: "700", fontSize: 12, fontVariant: ["tabular-nums"] },
-  compactDivider: { color: colors.mutedDim, fontSize: 12 }
+  label: { ...type.micro, color: colors.muted, marginTop: 4 },
+  compact: { ...type.caption, color: colors.fog, opacity: 0.78, fontVariant: ["tabular-nums"] }
 });

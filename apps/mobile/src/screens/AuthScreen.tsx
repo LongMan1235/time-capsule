@@ -1,6 +1,6 @@
-import { Apple, AtSign, KeyRound, Sparkles, UserRound } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from "react-native";
+import { AtSign, KeyRound, UserRound } from "lucide-react-native";
+import { useState } from "react";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api } from "../api/client";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -14,8 +14,8 @@ import { useSessionStore, type SessionUser } from "../store/session";
 type Mode = "signup" | "login";
 
 const modeOptions: Array<{ value: Mode; label: string }> = [
-  { value: "signup", label: "Create account" },
-  { value: "login", label: "Sign in" }
+  { value: "login", label: "Sign in" },
+  { value: "signup", label: "Create account" }
 ];
 
 export function AuthScreen() {
@@ -26,11 +26,6 @@ export function AuthScreen() {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const signIn = useSessionStore((state) => state.signIn);
-
-  const swap = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(swap, { toValue: mode === "signup" ? 0 : 1, duration: 280, useNativeDriver: true }).start();
-  }, [mode, swap]);
 
   function fillTestAccount() {
     setMode("login");
@@ -60,7 +55,7 @@ export function AuthScreen() {
   return (
     <Screen tone="warm">
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View style={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Stagger delay={80}>
             <Text style={styles.eyebrow}>TIME CAPSULE</Text>
           </Stagger>
@@ -68,10 +63,10 @@ export function AuthScreen() {
             <Text style={styles.title}>{mode === "signup" ? "Create your capsule." : "Welcome back."}</Text>
           </Stagger>
           <Stagger delay={320}>
-            <Text style={styles.subtitle}>Your memories stay private until the day you choose.</Text>
+            <Text style={styles.subtitle}>Memories stay private until the day you choose.</Text>
           </Stagger>
 
-          <Stagger delay={440} style={{ marginTop: 22 }}>
+          <Stagger delay={440} style={{ marginTop: 28 }}>
             <SegmentedControl options={modeOptions} value={mode} onChange={setMode} />
           </Stagger>
 
@@ -79,7 +74,7 @@ export function AuthScreen() {
             <TextField
               label={mode === "signup" ? "EMAIL" : "EMAIL OR USERNAME"}
               icon={mode === "signup" ? AtSign : UserRound}
-              placeholder={mode === "signup" ? "you@somewhere.com" : "rithik or rithik@time-capsule.app"}
+              placeholder={mode === "signup" ? "you@somewhere.com" : "rithik"}
               keyboardType={mode === "signup" ? "email-address" : "default"}
               autoCapitalize="none"
               autoComplete={mode === "signup" ? "email" : "username"}
@@ -115,40 +110,22 @@ export function AuthScreen() {
             ) : null}
           </Stagger>
 
+          <Stagger delay={680} style={styles.cta}>
+            <PrimaryButton onPress={submit} loading={loading}>
+              {mode === "signup" ? "Create account" : "Sign in"}
+            </PrimaryButton>
+          </Stagger>
+
           {mode === "login" ? (
-            <Stagger delay={620}>
+            <Stagger delay={780}>
               <AnimatedPressable onPress={fillTestAccount} style={styles.testHint}>
-                <Sparkles color={colors.gold} size={13} />
                 <Text style={styles.testHintText}>
-                  Demo account ready: <Text style={styles.testHintAccent}>Rithik</Text> · <Text style={styles.testHintAccent}>mypassword123</Text>
+                  Demo · Rithik <Text style={styles.testHintAccent}>/</Text> mypassword123
                 </Text>
               </AnimatedPressable>
             </Stagger>
           ) : null}
-
-          <Stagger delay={680} style={styles.cta}>
-            <PrimaryButton onPress={submit} loading={loading}>
-              {mode === "signup" ? "Create my capsule" : "Sign in"}
-            </PrimaryButton>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or continue with</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <View style={styles.oauthRow}>
-              <AnimatedPressable style={styles.oauth} onPress={() => Alert.alert("Coming soon", "Google sign-in plugs in here.") }>
-                <Text style={styles.oauthGlyph}>G</Text>
-                <Text style={styles.oauthText}>Google</Text>
-              </AnimatedPressable>
-              <AnimatedPressable style={styles.oauth} onPress={() => Alert.alert("Coming soon", "Apple sign-in plugs in here.") }>
-                <Apple color={colors.fog} size={18} />
-                <Text style={styles.oauthText}>Apple</Text>
-              </AnimatedPressable>
-            </View>
-          </Stagger>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
   );
@@ -156,42 +133,21 @@ export function AuthScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { flex: 1, padding: 24, justifyContent: "center", gap: 6 },
-  eyebrow: { ...type.micro, color: colors.gold },
-  title: { ...type.hero, color: colors.fog, marginTop: 8 },
+  content: { flexGrow: 1, padding: 24, paddingTop: 32, justifyContent: "center" },
+  eyebrow: { ...type.micro, color: colors.gold, opacity: 0.85 },
+  title: { ...type.hero, color: colors.fog, marginTop: 10 },
   subtitle: { ...type.body, color: colors.muted, marginTop: 6 },
-  fields: { marginTop: 24, gap: 14 },
+  fields: { marginTop: 22, gap: 12 },
+  cta: { marginTop: 22 },
   testHint: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    marginTop: 16,
+    alignSelf: "center",
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: radii.md,
-    backgroundColor: "rgba(232,194,107,0.08)",
+    paddingVertical: 8,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: "rgba(232,194,107,0.28)",
-    marginTop: 14
+    borderColor: colors.line
   },
-  testHintText: { ...type.caption, color: colors.fog, flex: 1 },
-  testHintAccent: { color: colors.gold, fontWeight: "800" },
-  cta: { marginTop: 22, gap: 14 },
-  divider: { flexDirection: "row", alignItems: "center", gap: 12 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: colors.line },
-  dividerText: { ...type.micro, color: colors.muted },
-  oauthRow: { flexDirection: "row", gap: 10 },
-  oauth: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8
-  },
-  oauthGlyph: { ...type.subtitle, color: colors.fog, fontWeight: "900" },
-  oauthText: { ...type.body, color: colors.fog, fontWeight: "700" }
+  testHintText: { ...type.caption, color: colors.muted },
+  testHintAccent: { color: colors.mutedDim }
 });

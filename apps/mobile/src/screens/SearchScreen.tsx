@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { Search, Sparkles, Wand2 } from "lucide-react-native";
+import { Search } from "lucide-react-native";
 import { useState } from "react";
 import { Alert, FlatList, StyleSheet, Text, TextInput, View } from "react-native";
 import type { MemorySearchResult } from "@time-capsule/shared";
@@ -13,9 +13,7 @@ const examples = [
   "Photos of me and Amal",
   "Nighttime party photos",
   "Snowboarding videos",
-  "Toronto trip",
-  "Pictures with four people",
-  "When everyone is smiling"
+  "Toronto trip"
 ];
 
 export function SearchScreen() {
@@ -43,17 +41,18 @@ export function SearchScreen() {
         data={results}
         keyExtractor={(item) => item.mediaId}
         contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={{ gap: 16 }}>
             <Stagger delay={80}>
-              <Text style={styles.eyebrow}>SMART SEARCH</Text>
+              <Text style={styles.eyebrow}>SEARCH</Text>
             </Stagger>
             <Stagger delay={180}>
-              <Text style={styles.title}>Find the memory{"\n"}you almost forgot.</Text>
+              <Text style={styles.title}>Find a memory.</Text>
             </Stagger>
             <Stagger delay={300}>
               <View style={styles.searchBox}>
-                <Search color={colors.gold} size={18} />
+                <Search color={colors.muted} size={16} />
                 <TextInput
                   style={styles.input}
                   placeholder="Ask for a memory…"
@@ -64,49 +63,33 @@ export function SearchScreen() {
                   selectionColor={colors.gold}
                   returnKeyType="search"
                 />
-                {loading ? <Wand2 color={colors.gold} size={16} /> : null}
               </View>
             </Stagger>
             <Stagger delay={420}>
-              <Text style={styles.suggestLabel}>Try one of these</Text>
-            </Stagger>
-            <Stagger delay={520}>
               <View style={styles.examples}>
-                {examples.map((example, index) => (
-                  <AnimatedPressable
-                    key={example}
-                    style={[styles.chip, index % 2 === 0 ? styles.chipAlt : null]}
-                    onPress={() => search(example)}
-                  >
-                    <Sparkles color={index % 2 === 0 ? colors.gold : colors.fog} size={12} />
-                    <Text style={[styles.chipText, index % 2 === 0 ? styles.chipTextAccent : null]}>{example}</Text>
+                {examples.map((example) => (
+                  <AnimatedPressable key={example} style={styles.chip} onPress={() => search(example)}>
+                    <Text style={styles.chipText}>{example}</Text>
                   </AnimatedPressable>
                 ))}
               </View>
             </Stagger>
             {results.length > 0 ? (
-              <Stagger delay={120}>
-                <Text style={styles.resultsLabel}>{results.length} {results.length === 1 ? "match" : "matches"}</Text>
-              </Stagger>
+              <Text style={styles.resultsLabel}>{results.length} {results.length === 1 ? "match" : "matches"}</Text>
             ) : null}
           </View>
         }
         renderItem={({ item, index }) => (
-          <Stagger delay={80 + index * 60}>
+          <Stagger delay={60 + index * 50}>
             <View style={styles.result}>
               {item.thumbnailUrl ? (
                 <Image source={{ uri: item.thumbnailUrl }} style={styles.thumbnail} contentFit="cover" transition={300} />
               ) : (
-                <View style={[styles.thumbnail, styles.thumbnailFallback]}>
-                  <Sparkles color={colors.gold} size={18} />
-                </View>
+                <View style={[styles.thumbnail, styles.thumbnailFallback]} />
               )}
               <View style={styles.resultBody}>
                 <Text style={styles.resultTitle}>{item.caption ?? item.reason}</Text>
-                <View style={styles.resultMetaRow}>
-                  <View style={styles.scoreDot} />
-                  <Text style={styles.resultMeta}>{Math.round(item.score * 100)}% match · {item.reason}</Text>
-                </View>
+                <Text style={styles.resultMeta}>{Math.round(item.score * 100)}% · {item.reason}</Text>
               </View>
             </View>
           </Stagger>
@@ -117,53 +100,45 @@ export function SearchScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 140, gap: 12 },
-  eyebrow: { ...type.micro, color: colors.gold },
+  content: { padding: 20, paddingBottom: 140, gap: 10 },
+  eyebrow: { ...type.micro, color: colors.muted },
   title: { ...type.hero, color: colors.fog },
   searchBox: {
-    minHeight: 58,
-    borderRadius: radii.lg,
+    minHeight: 52,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.lineBright,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    borderColor: colors.line,
+    backgroundColor: colors.card,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16
+    gap: 10,
+    paddingHorizontal: 14
   },
-  input: { ...type.subtitle, color: colors.fog, flex: 1 },
-  suggestLabel: { ...type.micro, color: colors.muted },
+  input: { ...type.body, color: colors.fog, flex: 1 },
   examples: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingVertical: 8,
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: "rgba(255,255,255,0.04)"
+    backgroundColor: colors.card
   },
-  chipAlt: { borderColor: "rgba(232,194,107,0.32)", backgroundColor: "rgba(232,194,107,0.08)" },
-  chipText: { ...type.caption, color: colors.fog, fontWeight: "700" },
-  chipTextAccent: { color: colors.gold },
+  chipText: { ...type.caption, color: colors.fog },
   resultsLabel: { ...type.micro, color: colors.muted, marginTop: 12 },
   result: {
     flexDirection: "row",
     gap: 12,
     padding: 12,
     borderRadius: radii.md,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.line,
-    marginBottom: 10
+    marginBottom: 8
   },
-  thumbnail: { width: 64, height: 64, borderRadius: radii.sm, backgroundColor: colors.dusk },
-  thumbnailFallback: { alignItems: "center", justifyContent: "center" },
-  resultBody: { flex: 1, gap: 6, justifyContent: "center" },
-  resultTitle: { ...type.subtitle, color: colors.fog, fontWeight: "700" },
-  resultMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  scoreDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold },
+  thumbnail: { width: 56, height: 56, borderRadius: radii.sm, backgroundColor: colors.dusk },
+  thumbnailFallback: {},
+  resultBody: { flex: 1, gap: 4, justifyContent: "center" },
+  resultTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
   resultMeta: { ...type.caption, color: colors.muted }
 });

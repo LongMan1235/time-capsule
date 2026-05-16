@@ -1,8 +1,9 @@
 import { BlurView } from "expo-blur";
-import { Globe2, MapPin } from "lucide-react-native";
+import { Globe2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../api/client";
 import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
@@ -17,6 +18,7 @@ interface MapEvent {
 }
 
 export function MapScreen() {
+  const insets = useSafeAreaInsets();
   const [events, setEvents] = useState<MapEvent[]>([]);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export function MapScreen() {
   }, []);
 
   return (
-    <Screen ambient={false} grain={false} edges={["left", "right"]}>
+    <Screen ambient={false} grain={false} edges={[]}>
       <MapView
         style={StyleSheet.absoluteFill}
         initialRegion={{ latitude: 43.6532, longitude: -79.3832, latitudeDelta: 32, longitudeDelta: 32 }}
@@ -41,31 +43,24 @@ export function MapScreen() {
           >
             <View style={styles.pinShell}>
               <View style={styles.pinDot} />
-              <View style={styles.pinHalo} />
             </View>
           </Marker>
         ))}
       </MapView>
 
-      <View pointerEvents="box-none" style={styles.overlay}>
+      <View pointerEvents="box-none" style={[styles.overlay, { top: insets.top + 12 }]}>
         <Stagger delay={120}>
           <View style={styles.headerCard}>
             {Platform.OS === "ios" ? (
               <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
             ) : (
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(15,12,22,0.85)" }]} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(15,12,22,0.88)" }]} />
             )}
             <View style={styles.headerInner}>
-              <View style={styles.headerIcon}>
-                <Globe2 color={colors.gold} size={18} />
-              </View>
+              <Globe2 color={colors.fog} size={16} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.eyebrow}>MEMORY MAP</Text>
-                <Text style={styles.title}>Memories around{" "}<Text style={styles.titleAccent}>the world</Text></Text>
-              </View>
-              <View style={styles.countPill}>
-                <MapPin color={colors.fog} size={12} />
-                <Text style={styles.countText}>{events.length}</Text>
+                <Text style={styles.title}>{events.length} {events.length === 1 ? "place" : "places"}</Text>
               </View>
             </View>
           </View>
@@ -76,58 +71,24 @@ export function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  overlay: { position: "absolute", top: 60, left: 16, right: 16 },
+  overlay: { position: "absolute", left: 16, right: 16 },
   headerCard: {
-    borderRadius: radii.lg,
+    borderRadius: radii.md,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.lineBright
-  },
-  headerInner: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
-  headerIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(232,194,107,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(232,194,107,0.35)"
-  },
-  eyebrow: { ...type.micro, color: colors.gold },
-  title: { ...type.subtitle, color: colors.fog, fontWeight: "800", marginTop: 2 },
-  titleAccent: { color: colors.gold, fontStyle: "italic" },
-  countPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.pill,
-    backgroundColor: "rgba(8,6,12,0.55)",
     borderWidth: 1,
     borderColor: colors.line
   },
-  countText: { ...type.caption, color: colors.fog, fontWeight: "700" },
-  pinShell: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
+  headerInner: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
+  eyebrow: { ...type.micro, color: colors.muted },
+  title: { ...type.body, color: colors.fog, fontWeight: "600", marginTop: 2 },
+  pinShell: { width: 18, height: 18, alignItems: "center", justifyContent: "center" },
   pinDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: colors.gold,
     borderWidth: 2,
-    borderColor: colors.ink,
-    shadowColor: colors.gold,
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 }
-  },
-  pinHalo: {
-    position: "absolute",
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(232,194,107,0.20)"
+    borderColor: colors.ink
   }
 });
 

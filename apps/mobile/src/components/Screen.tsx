@@ -27,13 +27,7 @@ export function Screen({
   return (
     <LinearGradient colors={palette} style={styles.fill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
       {ambient ? <AmbientOrbs /> : null}
-      {grain ? <FilmGrain /> : null}
-      <View pointerEvents="none" style={styles.topVignette}>
-        <LinearGradient colors={["rgba(0,0,0,0.45)", "rgba(0,0,0,0)"]} style={StyleSheet.absoluteFill} />
-      </View>
-      <View pointerEvents="none" style={styles.bottomVignette}>
-        <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.45)"]} style={StyleSheet.absoluteFill} />
-      </View>
+      {grain ? <FilmGrain opacity={0.025} /> : null}
       <SafeAreaView edges={edges} style={[styles.safe, style]}>
         {children}
       </SafeAreaView>
@@ -43,7 +37,5 @@ export function Screen({
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.ink },
-  safe: { flex: 1 },
-  topVignette: { position: "absolute", top: 0, left: 0, right: 0, height: 140 },
-  bottomVignette: { position: "absolute", bottom: 0, left: 0, right: 0, height: 160 }
+  safe: { flex: 1 }
 });

@@ -4,13 +4,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ArrowLeft, ImagePlus, MapPin } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Dimensions, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../api/client";
 import { pickAndUploadMedia } from "../api/uploads";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
-import { colors, gradients, radii, shadow, type } from "../design/theme";
+import { colors, radii, type } from "../design/theme";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { formatDate } from "../utils/dates";
 
@@ -32,10 +33,11 @@ interface EventDetail {
   media: Media[];
 }
 
-const HERO_HEIGHT = 320;
+const HERO_HEIGHT = 300;
 const fallbackCover = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80";
 
 export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, "EventDetail">) {
+  const insets = useSafeAreaInsets();
   const [event, setEvent] = useState<EventDetail>();
   const [error, setError] = useState<string>();
   const [uploading, setUploading] = useState(false);
@@ -79,13 +81,12 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
     );
   }
 
-  const heroScale = scrollY.interpolate({ inputRange: [-200, 0], outputRange: [1.4, 1], extrapolate: "clamp" });
+  const heroScale = scrollY.interpolate({ inputRange: [-200, 0], outputRange: [1.35, 1], extrapolate: "clamp" });
   const heroTranslate = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT], outputRange: [0, -HERO_HEIGHT / 2], extrapolate: "clamp" });
-  const heroOpacity = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT * 0.7], outputRange: [1, 0.2], extrapolate: "clamp" });
-  const headerOpacity = scrollY.interpolate({ inputRange: [HERO_HEIGHT - 80, HERO_HEIGHT], outputRange: [0, 1], extrapolate: "clamp" });
+  const heroOpacity = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT * 0.8], outputRange: [1, 0.3], extrapolate: "clamp" });
 
   return (
-    <Screen edges={["bottom"]} ambient={false} grain={false}>
+    <Screen edges={[]} ambient={false} grain={false}>
       <Animated.View
         style={[
           styles.hero,
@@ -93,14 +94,10 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         ]}
       >
         <Image source={{ uri: event.coverUrl ?? fallbackCover }} style={StyleSheet.absoluteFill} contentFit="cover" transition={500} />
-        <LinearGradient colors={["rgba(0,0,0,0)", "rgba(11,10,16,0.55)", "rgba(11,10,16,0.95)"]} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={["rgba(0,0,0,0.10)", "rgba(0,0,0,0.55)", "rgba(11,10,16,0.95)"]} style={StyleSheet.absoluteFill} />
       </Animated.View>
 
-      <Animated.View style={[styles.stickyHeader, { opacity: headerOpacity }]} pointerEvents="none">
-        <Text style={styles.stickyTitle} numberOfLines={1}>{event.title}</Text>
-      </Animated.View>
-
-      <View style={styles.topBar} pointerEvents="box-none">
+      <View style={[styles.topBar, { top: insets.top + 8 }]} pointerEvents="box-none">
         <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft color={colors.fog} size={20} />
         </AnimatedPressable>
@@ -111,30 +108,28 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         numColumns={2}
         keyExtractor={(item) => item.id}
         columnWrapperStyle={styles.columns}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: HERO_HEIGHT - 60 }]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
         ListHeaderComponent={
           <View style={styles.headerCard}>
             <Stagger delay={120}>
-              <View style={styles.metaPill}>
-                <Text style={styles.metaPillText}>{formatDate(event.eventDate)}</Text>
-              </View>
+              <Text style={styles.date}>{formatDate(event.eventDate)}</Text>
             </Stagger>
-            <Stagger delay={240}>
+            <Stagger delay={220}>
               <Text style={styles.title}>{event.title}</Text>
             </Stagger>
             {event.locationName ? (
-              <Stagger delay={340}>
+              <Stagger delay={320}>
                 <View style={styles.locationRow}>
-                  <MapPin color={colors.gold} size={14} />
+                  <MapPin color={colors.muted} size={13} />
                   <Text style={styles.locationText}>{event.locationName}</Text>
                 </View>
               </Stagger>
             ) : null}
             {event.description ? (
-              <Stagger delay={440}>
+              <Stagger delay={420}>
                 <Text style={styles.description}>{event.description}</Text>
               </Stagger>
             ) : null}
@@ -147,20 +142,14 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>This capsule is empty.</Text>
-            <Text style={styles.emptyBody}>Add a photo, video, or voice note — every memory becomes a future surprise.</Text>
+            <Text style={styles.emptyTitle}>Empty capsule</Text>
+            <Text style={styles.emptyBody}>Add a photo, video, or voice note.</Text>
           </View>
         }
         renderItem={({ item, index }) => (
-          <Stagger delay={120 + index * 60} translate={18}>
-            <View style={[styles.tile, shadow.soft]}>
+          <Stagger delay={120 + index * 50} translate={14}>
+            <View style={styles.tile}>
               <Image source={{ uri: item.url }} style={styles.tileImage} contentFit="cover" transition={400} />
-              {item.caption ? (
-                <View style={styles.captionWrap}>
-                  <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.75)"]} style={StyleSheet.absoluteFill} />
-                  <Text style={styles.caption}>{item.caption}</Text>
-                </View>
-              ) : null}
             </View>
           </Stagger>
         )}
@@ -176,7 +165,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   error: { ...type.subtitle, color: colors.fog },
   hero: { position: "absolute", top: 0, left: 0, right: 0, height: HERO_HEIGHT, overflow: "hidden" },
-  topBar: { position: "absolute", top: 12, left: 12, right: 12, flexDirection: "row", justifyContent: "space-between" },
+  topBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", justifyContent: "space-between" },
   backButton: {
     width: 40,
     height: 40,
@@ -187,40 +176,22 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     backgroundColor: "rgba(11,10,16,0.55)"
   },
-  stickyHeader: {
-    position: "absolute",
-    top: 14,
-    left: 60,
-    right: 60,
-    alignItems: "center",
-    zIndex: 5
-  },
-  stickyTitle: { ...type.subtitle, color: colors.fog, fontWeight: "800" },
-  content: { paddingTop: HERO_HEIGHT - 40, paddingHorizontal: 20, paddingBottom: 140 },
+  content: { paddingHorizontal: 20, paddingBottom: 140 },
   headerCard: {
     padding: 18,
     borderRadius: radii.lg,
     backgroundColor: "rgba(11,10,16,0.86)",
     borderWidth: 1,
     borderColor: colors.line,
-    marginBottom: 20,
-    gap: 10
+    marginBottom: 16,
+    gap: 8
   },
-  metaPill: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.pill,
-    backgroundColor: "rgba(232,194,107,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(232,194,107,0.35)"
-  },
-  metaPillText: { ...type.micro, color: colors.gold },
-  title: { ...type.hero, color: colors.fog },
-  locationRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  locationText: { ...type.body, color: colors.fog },
-  description: { ...type.body, color: colors.muted, marginTop: 8, lineHeight: 22 },
-  empty: { paddingVertical: 40, gap: 8 },
+  date: { ...type.caption, color: colors.gold },
+  title: { ...type.hero, color: colors.fog, marginTop: 2 },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  locationText: { ...type.caption, color: colors.muted },
+  description: { ...type.body, color: colors.muted, marginTop: 6 },
+  empty: { paddingVertical: 40, gap: 6, alignItems: "center" },
   emptyTitle: { ...type.heading, color: colors.fog },
   emptyBody: { ...type.body, color: colors.muted },
   columns: { gap: 10, marginBottom: 10 },
@@ -229,11 +200,7 @@ const styles = StyleSheet.create({
     height: tileSize * 1.18,
     borderRadius: radii.md,
     overflow: "hidden",
-    backgroundColor: colors.dusk,
-    borderWidth: 1,
-    borderColor: colors.line
+    backgroundColor: colors.dusk
   },
-  tileImage: { flex: 1 },
-  captionWrap: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 10 },
-  caption: { color: colors.fog, fontWeight: "700", fontSize: 12 }
+  tileImage: { flex: 1 }
 });
