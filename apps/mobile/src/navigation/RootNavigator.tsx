@@ -19,6 +19,7 @@ import { OnboardingScreen } from "../screens/OnboardingScreen";
 import { PaywallScreen } from "../screens/PaywallScreen";
 import { PhotoViewerScreen } from "../screens/PhotoViewerScreen";
 import { PrivacyScreen } from "../screens/PrivacyScreen";
+import { ProfileScreen } from "../screens/ProfileScreen";
 import { SearchScreen } from "../screens/SearchScreen";
 import { UnlockCeremonyScreen } from "../screens/UnlockCeremonyScreen";
 
@@ -32,6 +33,7 @@ export type RootStackParamList = {
   CameraCapture: { eventId: string; title: string };
   PhotoViewer: { eventId: string; startIndex?: number };
   UnlockCeremony: { eventId: string };
+  Profile: undefined;
   Paywall: undefined;
 };
 
@@ -143,6 +145,7 @@ export function RootNavigator() {
           <Stack.Screen name="CameraCapture" component={CameraCaptureScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
           <Stack.Screen name="PhotoViewer" component={PhotoViewerScreen} options={{ animation: "fade" }} />
           <Stack.Screen name="UnlockCeremony" component={UnlockCeremonyScreen} options={{ animation: "fade", presentation: "modal" }} />
+          <Stack.Screen name="Profile" component={ProfileScreen} options={{ animation: "slide_from_right" }} />
           <Stack.Screen name="Paywall" component={PaywallScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
         </>
       ) : (

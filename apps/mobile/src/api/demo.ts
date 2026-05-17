@@ -432,6 +432,44 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     } as T;
   }
 
+  const setCoverMatch = path.match(/^\/events\/([^/]+)\/cover$/);
+  if (method === "POST" && setCoverMatch) {
+    const eventId = setCoverMatch[1];
+    const body = parseBody<{ mediaId: string }>(options);
+    if (!body?.mediaId) throw new Error("Pick a memory to use as the cover.");
+    const event = store.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    const media = (store.media[eventId] ?? []).find((m) => m.id === body.mediaId);
+    if (!media) throw new Error("That memory isn't in this capsule.");
+    event.coverUrl = media.url;
+    await persist();
+    return { ok: true } as T;
+  }
+
+  const deleteMediaMatch = path.match(/^\/media\/([^/]+)$/);
+  if (method === "DELETE" && deleteMediaMatch) {
+    const mediaId = deleteMediaMatch[1];
+    const userId = store.currentUserId ?? "user-rithik";
+    let removed = false;
+    for (const [eventId, list] of Object.entries(store.media)) {
+      const idx = list.findIndex((m) => m.id === mediaId);
+      if (idx >= 0) {
+        const item = list[idx];
+        if (item.addedByUserId !== userId) {
+          throw new Error("You can only delete memories you added.");
+        }
+        store.media[eventId] = [...list.slice(0, idx), ...list.slice(idx + 1)];
+        removed = true;
+        break;
+      }
+    }
+    if (!removed) throw new Error("Memory not found");
+    delete store.reactions[mediaId];
+    delete store.comments[mediaId];
+    await persist();
+    return { ok: true } as T;
+  }
+
   const ceremonyMatch = path.match(/^\/events\/([^/]+)\/ceremony-seen$/);
   if (method === "POST" && ceremonyMatch) {
     const eventId = ceremonyMatch[1];
@@ -440,6 +478,35 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     event.ceremonySeenAt = new Date().toISOString();
     await persist();
     return { ok: true, ceremonySeenAt: event.ceremonySeenAt } as T;
+  }
+
+  if (route === "GET /me/stats") {
+    const userId = store.currentUserId ?? "user-rithik";
+    const myMedia: DemoMedia[] = [];
+    for (const list of Object.values(store.media)) {
+      for (const m of list) if (m.addedByUserId === userId && m.capturedAt) myMedia.push(m);
+    }
+    const week = new Set<string>();
+    const now = new Date();
+    for (const m of myMedia) {
+      const d = new Date(m.capturedAt!);
+      const weekKey = `${d.getUTCFullYear()}-${Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / (7 * 86_400_000))}`;
+      week.add(weekKey);
+    }
+    let streak = 0;
+    const cursor = new Date(now);
+    for (let i = 0; i < 52; i += 1) {
+      const key = `${cursor.getUTCFullYear()}-${Math.floor((cursor.getTime() - Date.UTC(cursor.getUTCFullYear(), 0, 1)) / (7 * 86_400_000))}`;
+      if (week.has(key)) {
+        streak += 1;
+        cursor.setUTCDate(cursor.getUTCDate() - 7);
+      } else {
+        break;
+      }
+    }
+    const eventsOwned = store.events.length;
+    const memoriesAdded = myMedia.length;
+    return { streakWeeks: streak, eventsOwned, memoriesAdded } as T;
   }
 
   if (route === "GET /memories/on-this-day") {

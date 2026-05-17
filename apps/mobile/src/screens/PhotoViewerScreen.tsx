@@ -1,8 +1,9 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Image } from "expo-image";
-import { ArrowLeft, MessageCircle, Send } from "lucide-react-native";
+import { ArrowLeft, MessageCircle, MoreHorizontal, Send } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Animated,
@@ -69,6 +70,73 @@ export function PhotoViewerScreen({ navigation, route }: NativeStackScreenProps<
     }
   }
 
+  async function setAsCover() {
+    if (!current) return;
+    try {
+      await api(`/events/${route.params.eventId}/cover`, { method: "POST", body: JSON.stringify({ mediaId: current.id }) });
+      Alert.alert("Cover updated", "This memory is now the capsule cover.");
+    } catch (error) {
+      Alert.alert("Could not set cover", error instanceof Error ? error.message : "Try again.");
+    }
+  }
+
+  async function deleteCurrent() {
+    if (!current) return;
+    Alert.alert(
+      "Delete memory?",
+      "This removes the photo, its comments, and its reactions.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api(`/media/${current.id}`, { method: "DELETE" });
+              setBundle((prev) => {
+                if (!prev) return prev;
+                const nextMedia = prev.media.filter((m) => m.id !== current.id);
+                return { ...prev, media: nextMedia };
+              });
+              if (index >= (bundle?.media.length ?? 1) - 1) {
+                setIndex(Math.max(0, index - 1));
+              }
+            } catch (error) {
+              Alert.alert("Could not delete", error instanceof Error ? error.message : "Try again.");
+            }
+          }
+        }
+      ]
+    );
+  }
+
+  function openActions() {
+    if (!current) return;
+    const isMine = current.addedBy.id === myUserId;
+    const buttons = ["Set as capsule cover", ...(isMine ? ["Delete memory"] : []), "Cancel"];
+    const destructiveIdx = isMine ? 1 : -1;
+    const cancelIdx = buttons.length - 1;
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: buttons, destructiveButtonIndex: destructiveIdx, cancelButtonIndex: cancelIdx, userInterfaceStyle: "dark" },
+        (i) => {
+          if (i === 0) setAsCover();
+          else if (i === 1 && isMine) deleteCurrent();
+        }
+      );
+    } else {
+      Alert.alert(
+        "Memory actions",
+        undefined,
+        [
+          { text: "Set as cover", onPress: setAsCover },
+          ...(isMine ? [{ text: "Delete memory", style: "destructive" as const, onPress: deleteCurrent }] : []),
+          { text: "Cancel", style: "cancel" as const }
+        ]
+      );
+    }
+  }
+
   async function sendComment() {
     if (!current || !pendingComment.trim()) return;
     setSending(true);
@@ -111,7 +179,9 @@ export function PhotoViewerScreen({ navigation, route }: NativeStackScreenProps<
             <Text style={styles.titleSmall} numberOfLines={1}>{bundle.title}</Text>
             <Text style={styles.counter}>{index + 1} / {bundle.media.length}</Text>
           </View>
-          <View style={styles.iconButton} />
+          <AnimatedPressable onPress={openActions} style={styles.iconButton}>
+            <MoreHorizontal color={colors.fog} size={20} />
+          </AnimatedPressable>
         </View>
 
         <FlatList
@@ -128,9 +198,9 @@ export function PhotoViewerScreen({ navigation, route }: NativeStackScreenProps<
             if (nextIndex !== index) setIndex(nextIndex);
           }}
           renderItem={({ item }) => (
-            <View style={styles.slide}>
+            <TouchableOpacity activeOpacity={1} onLongPress={openActions} style={styles.slide}>
               <Image source={{ uri: item.url }} style={styles.image} contentFit="contain" transition={250} />
-            </View>
+            </TouchableOpacity>
           )}
         />
 
@@ -213,7 +283,7 @@ function CommentsList({ comments }: { comments: MediaComment[] }) {
       {comments.slice(-3).map((comment) => (
         <View key={comment.id} style={styles.commentRow}>
           <Text style={styles.commentAuthor}>{comment.author.displayName}</Text>
-          <Text style={styles.commentBody}>{comment.body}</Text>
+          <Text style={styles.commentBody}>{renderMentions(comment.body)}</Text>
         </View>
       ))}
       {comments.length > 3 ? (
@@ -221,6 +291,16 @@ function CommentsList({ comments }: { comments: MediaComment[] }) {
       ) : null}
     </View>
   );
+}
+
+function renderMentions(body: string) {
+  const parts = body.split(/(\s+)/);
+  return parts.map((part, idx) => {
+    if (part.startsWith("@") && part.length > 1) {
+      return <Text key={idx} style={{ color: colors.gold, fontWeight: "700" }}>{part}</Text>;
+    }
+    return <Text key={idx}>{part}</Text>;
+  });
 }
 
 function formatRelative(iso: string) {

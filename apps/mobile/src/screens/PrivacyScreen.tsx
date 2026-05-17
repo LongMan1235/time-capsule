@@ -1,5 +1,7 @@
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Image } from "expo-image";
-import { LogOut, ShieldCheck, Sparkles, Trash2, UserRound } from "lucide-react-native";
+import { ChevronRight, LogOut, ShieldCheck, Sparkles, Trash2, UserRound } from "lucide-react-native";
 import { useState } from "react";
 import { Alert, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { api } from "../api/client";
@@ -8,9 +10,11 @@ import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
 import { colors, radii, type } from "../design/theme";
 import type { IconComponent } from "../design/icons";
+import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useSessionStore } from "../store/session";
 
 export function PrivacyScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [aiOptIn, setAiOptIn] = useState(false);
   const [faceRecognitionOptIn, setFaceRecognitionOptIn] = useState(false);
   const user = useSessionStore((state) => state.user);
@@ -55,7 +59,7 @@ export function PrivacyScreen() {
 
         {user ? (
           <Stagger delay={280}>
-            <View style={styles.profileCard}>
+            <AnimatedPressable onPress={() => navigation.navigate("Profile")} style={styles.profileCard}>
               {user.avatarUrl ? (
                 <Image source={{ uri: user.avatarUrl }} style={styles.avatar} contentFit="cover" transition={300} />
               ) : (
@@ -67,7 +71,8 @@ export function PrivacyScreen() {
                 <Text style={styles.profileName}>{user.displayName}</Text>
                 <Text style={styles.profileMeta}>@{user.username}</Text>
               </View>
-            </View>
+              <ChevronRight color={colors.muted} size={16} />
+            </AnimatedPressable>
           </Stagger>
         ) : null}
 
