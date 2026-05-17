@@ -17,6 +17,7 @@ import { HomeScreen } from "../screens/HomeScreen";
 import { MapScreen } from "../screens/MapScreen";
 import { OnboardingScreen } from "../screens/OnboardingScreen";
 import { PaywallScreen } from "../screens/PaywallScreen";
+import { PhotoViewerScreen } from "../screens/PhotoViewerScreen";
 import { PrivacyScreen } from "../screens/PrivacyScreen";
 import { SearchScreen } from "../screens/SearchScreen";
 
@@ -28,6 +29,7 @@ export type RootStackParamList = {
   Countdown: { eventId: string; title: string; unlockAt: string; createdAt?: string };
   CreateEvent: undefined;
   CameraCapture: { eventId: string; title: string };
+  PhotoViewer: { eventId: string; startIndex?: number };
   Paywall: undefined;
 };
 
@@ -137,6 +139,7 @@ export function RootNavigator() {
           <Stack.Screen name="Countdown" component={CountdownScreen} options={{ animation: "fade", presentation: "modal" }} />
           <Stack.Screen name="CreateEvent" component={CreateEventScreen} options={{ animation: "slide_from_bottom" }} />
           <Stack.Screen name="CameraCapture" component={CameraCaptureScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
+          <Stack.Screen name="PhotoViewer" component={PhotoViewerScreen} options={{ animation: "fade" }} />
           <Stack.Screen name="Paywall" component={PaywallScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
         </>
       ) : (

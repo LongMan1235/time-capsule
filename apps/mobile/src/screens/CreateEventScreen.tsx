@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { CalendarClock, Camera, Globe, Heading2, Hourglass, MapPin, Users, X } from "lucide-react-native";
+import { CalendarClock, Camera, Globe, Heading2, Hourglass, MapPin, User, Users, X } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -55,6 +55,7 @@ export function CreateEventScreen() {
   const [unlockDays, setUnlockDays] = useState(365);
   const [contributorScope, setContributorScope] = useState<ContributorScope>("OWNER_ONLY");
   const [mediaCap, setMediaCap] = useState<number | null>(null);
+  const [mediaCapPerUser, setMediaCapPerUser] = useState<number | null>(10);
   const [saving, setSaving] = useState(false);
 
   const collectionClosesAt = useMemo(() => isoFromHours(collectionHours), [collectionHours]);
@@ -78,7 +79,8 @@ export function CreateEventScreen() {
           unlockAt,
           visibility: contributorScope === "OPEN_LINK" ? "COLLABORATIVE" : contributorScope === "FRIENDS" ? "FRIENDS" : "PRIVATE",
           contributorScope,
-          mediaCap
+          mediaCap,
+          mediaCapPerUser: contributorScope === "OWNER_ONLY" ? null : mediaCapPerUser
         })
       });
       navigation.goBack();
@@ -201,7 +203,7 @@ export function CreateEventScreen() {
           </Stagger>
 
           <Stagger delay={620}>
-            <SettingsBlock Icon={Camera} title="Photo cap" value={mediaCap ? `${mediaCap} photos` : "Unlimited"}>
+            <SettingsBlock Icon={Camera} title="Capsule photo cap" value={mediaCap ? `${mediaCap} photos` : "Unlimited"}>
               <View style={styles.chipRow}>
                 {[null, 20, 50, 100, 250].map((cap) => {
                   const active = cap === mediaCap;
@@ -216,8 +218,35 @@ export function CreateEventScreen() {
                   );
                 })}
               </View>
+              <Text style={styles.helperText}>Total photos this capsule can hold across all contributors.</Text>
             </SettingsBlock>
           </Stagger>
+
+          {contributorScope !== "OWNER_ONLY" ? (
+            <Stagger delay={680}>
+              <SettingsBlock
+                Icon={User}
+                title="Per-person cap"
+                value={mediaCapPerUser ? `${mediaCapPerUser} each` : "Unlimited"}
+              >
+                <View style={styles.chipRow}>
+                  {[null, 3, 5, 10, 20].map((cap) => {
+                    const active = cap === mediaCapPerUser;
+                    return (
+                      <AnimatedPressable
+                        key={cap ?? "none"}
+                        onPress={() => setMediaCapPerUser(cap)}
+                        style={[styles.chip, active ? styles.chipActive : null]}
+                      >
+                        <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]}>{cap ?? "∞"}</Text>
+                      </AnimatedPressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.helperText}>How many photos a single contributor can add to this capsule.</Text>
+              </SettingsBlock>
+            </Stagger>
+          ) : null}
 
           <Stagger delay={760}>
             <PrimaryButton onPress={create} loading={saving}>

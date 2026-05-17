@@ -26,6 +26,31 @@ export interface EventSummary {
   contributorScope: ContributorScope;
   mediaCount: number;
   mediaCap?: number | null;
+  mediaCapPerUser?: number | null;
+}
+
+export interface MediaReaction {
+  emoji: string;
+  count: number;
+  userIds: string[];
+}
+
+export interface MediaComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; username: string; displayName: string; avatarUrl?: string };
+}
+
+export interface MediaDetail {
+  id: string;
+  url: string;
+  kind: "PHOTO" | "VIDEO" | "VOICE_NOTE";
+  caption?: string | null;
+  capturedAt?: string | null;
+  addedBy: { id: string; username: string; displayName: string; avatarUrl?: string };
+  reactions: MediaReaction[];
+  comments: MediaComment[];
 }
 
 export interface MemorySearchResult {

@@ -1,16 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { EventSummary } from "@time-capsule/shared";
+import type { EventSummary, MediaComment, MediaDetail, MediaReaction } from "@time-capsule/shared";
 import {
   computeState,
+  seedComments,
   seedCredentials,
   seedEvents,
   seedMedia,
+  seedReactions,
   seedSearchResults,
   seedUsers,
   toEventSummary,
+  type DemoComment,
   type DemoCredential,
   type DemoEvent,
   type DemoMedia,
+  type DemoReaction,
   type DemoUser
 } from "./demoData";
 
@@ -18,6 +22,8 @@ interface DemoStore {
   version: number;
   events: DemoEvent[];
   media: Record<string, DemoMedia[]>;
+  reactions: Record<string, DemoReaction[]>;
+  comments: Record<string, DemoComment[]>;
   users: DemoUser[];
   credentials: DemoCredential[];
   currentUserId?: string;
@@ -26,10 +32,9 @@ interface DemoStore {
 }
 
 const STORAGE_KEY = "time-capsule-demo-store";
-const STORE_VERSION = 2;
+const STORE_VERSION = 3;
 
 let store: DemoStore = freshStore();
-
 let hydrated = false;
 let hydrating: Promise<void> | undefined;
 
@@ -37,7 +42,9 @@ function freshStore(): DemoStore {
   return {
     version: STORE_VERSION,
     events: [...seedEvents],
-    media: cloneMedia(seedMedia),
+    media: cloneMap(seedMedia),
+    reactions: cloneMap(seedReactions),
+    comments: cloneMap(seedComments),
     users: [...seedUsers],
     credentials: [...seedCredentials],
     currentUserId: undefined,
@@ -46,8 +53,8 @@ function freshStore(): DemoStore {
   };
 }
 
-function cloneMedia(input: Record<string, DemoMedia[]>): Record<string, DemoMedia[]> {
-  const out: Record<string, DemoMedia[]> = {};
+function cloneMap<T>(input: Record<string, T[]>): Record<string, T[]> {
+  const out: Record<string, T[]> = {};
   for (const [key, value] of Object.entries(input)) out[key] = [...value];
   return out;
 }
@@ -104,9 +111,23 @@ export async function resetDemoStore() {
   await persist();
 }
 
-export async function attachDemoMedia(eventId: string, media: DemoMedia) {
+export async function attachDemoMedia(eventId: string, partial: Omit<DemoMedia, "addedByUserId"> & { addedByUserId?: string }) {
   await ensureHydrated();
+  const userId = partial.addedByUserId ?? store.currentUserId ?? "user-rithik";
+  const event = store.events.find((e) => e.id === eventId);
   const list = store.media[eventId] ?? [];
+
+  if (event?.mediaCap && list.length >= event.mediaCap) {
+    throw new Error("Capsule photo cap reached.");
+  }
+  if (event?.mediaCapPerUser) {
+    const mine = list.filter((m) => m.addedByUserId === userId).length;
+    if (mine >= event.mediaCapPerUser) {
+      throw new Error(`You can only add ${event.mediaCapPerUser} photos to this capsule.`);
+    }
+  }
+
+  const media: DemoMedia = { ...partial, addedByUserId: userId };
   store.media[eventId] = [...list, media];
   await persist();
 }
@@ -151,6 +172,46 @@ async function setCurrentUser(userId: string) {
   await persist();
 }
 
+function publicUser(user: DemoUser) {
+  return { id: user.id, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl };
+}
+
+function aggregateReactions(mediaId: string, viewerId?: string): MediaReaction[] {
+  const list = store.reactions[mediaId] ?? [];
+  const byEmoji = new Map<string, MediaReaction>();
+  for (const reaction of list) {
+    const existing = byEmoji.get(reaction.emoji);
+    if (existing) {
+      existing.count += 1;
+      existing.userIds.push(reaction.userId);
+    } else {
+      byEmoji.set(reaction.emoji, { emoji: reaction.emoji, count: 1, userIds: [reaction.userId] });
+    }
+  }
+  void viewerId;
+  return Array.from(byEmoji.values()).sort((a, b) => b.count - a.count);
+}
+
+function toMediaDetail(media: DemoMedia): MediaDetail {
+  const author = store.users.find((u) => u.id === media.addedByUserId) ?? store.users[0];
+  const comments: MediaComment[] = (store.comments[media.id] ?? []).map((c) => ({
+    id: c.id,
+    body: c.body,
+    createdAt: c.createdAt,
+    author: publicUser(store.users.find((u) => u.id === c.userId) ?? store.users[0])
+  }));
+  return {
+    id: media.id,
+    url: media.url,
+    kind: media.kind,
+    caption: media.caption ?? null,
+    capturedAt: media.capturedAt ?? null,
+    addedBy: publicUser(author),
+    reactions: aggregateReactions(media.id),
+    comments
+  };
+}
+
 interface AuthBody {
   email?: string;
   password?: string;
@@ -168,6 +229,7 @@ interface CreateEventBody {
   visibility?: DemoEvent["visibility"];
   contributorScope?: DemoEvent["contributorScope"];
   mediaCap?: number | null;
+  mediaCapPerUser?: number | null;
   latitude?: number;
   longitude?: number;
 }
@@ -185,12 +247,20 @@ interface EarlyUnlockBody {
   eventId: string;
 }
 
+interface ReactionBody {
+  emoji: string;
+}
+
+interface CommentBody {
+  body: string;
+}
+
 export async function handleDemoRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   await ensureHydrated();
   const method = (options.method ?? "GET").toUpperCase();
   const route = `${method} ${path}`;
 
-  await delay(180);
+  await delay(140);
 
   if (route === "POST /auth/login") {
     const body = parseBody<AuthBody>(options) ?? {};
@@ -204,17 +274,15 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
         throw new Error("Incorrect password for this account.");
       }
       await setCurrentUser(credential.userId);
-      const matchedUser = store.users.find((u) => u.id === credential.userId);
-      return { token: tokenForUser(credential.userId), user: matchedUser } as T;
+      const matched = store.users.find((u) => u.id === credential.userId);
+      return { token: tokenForUser(credential.userId), user: matched } as T;
     }
 
     if (user) {
-      // Known user with no stored password — accept and sign in
       await setCurrentUser(user.id);
       return { token: tokenForUser(user.id), user } as T;
     }
 
-    // Unknown identifier — sign in as a generic guest so demo stays explorable
     const guest = ensureGuestUser(identifier);
     await setCurrentUser(guest.id);
     return { token: tokenForUser(guest.id), user: guest } as T;
@@ -225,11 +293,9 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     const email = body.email?.trim();
     const username = body.username?.trim();
     if (!email || !username) throw new Error("Email and username are required.");
-
     if (findCredential(email) || findCredential(username)) {
       throw new Error("An account with those credentials already exists. Try signing in.");
     }
-
     const user: DemoUser = {
       id: makeId("user"),
       email,
@@ -290,6 +356,7 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
       visibility: body.visibility ?? "PRIVATE",
       contributorScope: body.contributorScope ?? "OWNER_ONLY",
       mediaCap: body.mediaCap ?? null,
+      mediaCapPerUser: body.mediaCapPerUser ?? null,
       createdAt: new Date().toISOString()
     };
     store.events.unshift(event);
@@ -317,7 +384,10 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     const event = store.events.find((e) => e.id === eventId);
     if (!event) throw new Error("Event not found");
     const state = computeState(event);
-    const media = state === "LOCKED" ? [] : store.media[eventId] ?? [];
+    const list = state === "LOCKED" ? [] : store.media[eventId] ?? [];
+    const media = list.map((m) => toMediaDetail(m));
+    const myUserId = store.currentUserId ?? "user-rithik";
+    const myCount = list.filter((m) => m.addedByUserId === myUserId).length;
     return {
       event: {
         id: event.id,
@@ -332,9 +402,70 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
         visibility: event.visibility,
         contributorScope: event.contributorScope,
         mediaCap: event.mediaCap ?? null,
+        mediaCapPerUser: event.mediaCapPerUser ?? null,
+        mediaCountForMe: myCount,
         media
       }
     } as T;
+  }
+
+  const mediaDetailMatch = path.match(/^\/media\/([^/]+)$/);
+  if (method === "GET" && mediaDetailMatch) {
+    const mediaId = mediaDetailMatch[1];
+    for (const list of Object.values(store.media)) {
+      const found = list.find((m) => m.id === mediaId);
+      if (found) return { media: toMediaDetail(found) } as T;
+    }
+    throw new Error("Photo not found");
+  }
+
+  const reactionPostMatch = path.match(/^\/media\/([^/]+)\/reactions$/);
+  if (method === "POST" && reactionPostMatch) {
+    const mediaId = reactionPostMatch[1];
+    const body = parseBody<ReactionBody>(options);
+    if (!body?.emoji) throw new Error("Pick an emoji.");
+    const userId = store.currentUserId ?? "user-rithik";
+    const existing = store.reactions[mediaId] ?? [];
+    const already = existing.find((r) => r.userId === userId && r.emoji === body.emoji);
+    if (already) {
+      store.reactions[mediaId] = existing.filter((r) => r.id !== already.id);
+    } else {
+      const next: DemoReaction = {
+        id: makeId("rx"),
+        mediaId,
+        userId,
+        emoji: body.emoji,
+        createdAt: new Date().toISOString()
+      };
+      store.reactions[mediaId] = [...existing, next];
+    }
+    await persist();
+    return { reactions: aggregateReactions(mediaId) } as T;
+  }
+
+  const commentPostMatch = path.match(/^\/media\/([^/]+)\/comments$/);
+  if (method === "POST" && commentPostMatch) {
+    const mediaId = commentPostMatch[1];
+    const body = parseBody<CommentBody>(options);
+    if (!body?.body?.trim()) throw new Error("Type a comment first.");
+    const userId = store.currentUserId ?? "user-rithik";
+    const comment: DemoComment = {
+      id: makeId("c"),
+      mediaId,
+      userId,
+      body: body.body.trim(),
+      createdAt: new Date().toISOString()
+    };
+    store.comments[mediaId] = [...(store.comments[mediaId] ?? []), comment];
+    await persist();
+    const author = store.users.find((u) => u.id === userId) ?? store.users[0];
+    const mediaComment: MediaComment = {
+      id: comment.id,
+      body: comment.body,
+      createdAt: comment.createdAt,
+      author: publicUser(author)
+    };
+    return { comment: mediaComment } as T;
   }
 
   if (route === "POST /media/presign") {

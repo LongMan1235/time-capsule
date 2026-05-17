@@ -23,6 +23,22 @@ export const seedUsers: DemoUser[] = [
     displayName: "Rithik",
     avatarUrl: "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=320&q=80",
     subscriptionTier: "FREE"
+  },
+  {
+    id: "user-amal",
+    email: "amal@time-capsule.app",
+    username: "amal",
+    displayName: "Amal",
+    avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=320&q=80",
+    subscriptionTier: "FREE"
+  },
+  {
+    id: "user-ryan",
+    email: "ryan@time-capsule.app",
+    username: "ryan",
+    displayName: "Ryan",
+    avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=320&q=80",
+    subscriptionTier: "FREE"
   }
 ];
 
@@ -37,12 +53,32 @@ export interface DemoMedia {
   kind: "PHOTO" | "VIDEO" | "VOICE_NOTE";
   caption?: string;
   capturedAt?: string;
+  addedByUserId: string;
 }
+
+export interface DemoReaction {
+  id: string;
+  mediaId: string;
+  userId: string;
+  emoji: string;
+  createdAt: string;
+}
+
+export interface DemoComment {
+  id: string;
+  mediaId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+}
+
+export const REACTION_EMOJIS = ["❤️", "🔥", "😂", "😮", "😢", "🎉"] as const;
 
 export interface DemoEvent extends Omit<EventSummary, "state" | "mediaCount"> {
   createdAt: string;
   description?: string;
   earlyUnlockedAt?: string | null;
+  mediaCapPerUser?: number | null;
 }
 
 function daysFromNow(days: number) {
@@ -53,12 +89,17 @@ function daysAgo(days: number) {
   return new Date(Date.now() - days * 86_400_000).toISOString();
 }
 
-const photo = (id: string, query: string, caption?: string, daysOld = 30): DemoMedia => ({
+function hoursAgo(hours: number) {
+  return new Date(Date.now() - hours * 3_600_000).toISOString();
+}
+
+const photo = (id: string, query: string, caption: string | undefined, daysOld: number, addedBy: string): DemoMedia => ({
   id,
   url: `https://images.unsplash.com/${query}?auto=format&fit=crop&w=1200&q=80`,
   kind: "PHOTO",
   caption,
-  capturedAt: daysAgo(daysOld)
+  capturedAt: daysAgo(daysOld),
+  addedByUserId: addedBy
 });
 
 export const seedEvents: DemoEvent[] = [
@@ -76,6 +117,7 @@ export const seedEvents: DemoEvent[] = [
     visibility: "FRIENDS" as Visibility,
     contributorScope: "FRIENDS" as ContributorScope,
     mediaCap: null,
+    mediaCapPerUser: 10,
     createdAt: daysAgo(120)
   },
   {
@@ -92,6 +134,7 @@ export const seedEvents: DemoEvent[] = [
     visibility: "FRIENDS" as Visibility,
     contributorScope: "FRIENDS" as ContributorScope,
     mediaCap: null,
+    mediaCapPerUser: 15,
     createdAt: daysAgo(45)
   },
   {
@@ -108,6 +151,7 @@ export const seedEvents: DemoEvent[] = [
     visibility: "COLLABORATIVE" as Visibility,
     contributorScope: "OPEN_LINK" as ContributorScope,
     mediaCap: 60,
+    mediaCapPerUser: 5,
     createdAt: daysAgo(8)
   },
   {
@@ -125,6 +169,7 @@ export const seedEvents: DemoEvent[] = [
     visibility: "FRIENDS" as Visibility,
     contributorScope: "FRIENDS" as ContributorScope,
     mediaCap: null,
+    mediaCapPerUser: null,
     createdAt: daysAgo(380)
   },
   {
@@ -142,6 +187,7 @@ export const seedEvents: DemoEvent[] = [
     visibility: "PRIVATE" as Visibility,
     contributorScope: "OWNER_ONLY" as ContributorScope,
     mediaCap: null,
+    mediaCapPerUser: null,
     createdAt: daysAgo(640)
   },
   {
@@ -158,42 +204,75 @@ export const seedEvents: DemoEvent[] = [
     visibility: "PRIVATE" as Visibility,
     contributorScope: "OWNER_ONLY" as ContributorScope,
     mediaCap: null,
+    mediaCapPerUser: null,
     createdAt: daysAgo(2)
   }
 ];
 
 export const seedMedia: Record<string, DemoMedia[]> = {
   "evt-europe-2026": [
-    photo("m-eu-1", "photo-1499856871958-5b9627545d1a", "Lisbon, golden hour", 118),
-    photo("m-eu-2", "photo-1533105079780-92b9be482077", "Pastéis & espresso", 115),
-    photo("m-eu-3", "photo-1502602898657-3e91760cbb34", "The Eiffel detour", 110),
-    photo("m-eu-4", "photo-1467269204594-9661b134dd2b", "Barcelona market run", 108),
-    photo("m-eu-5", "photo-1534430480872-3498386e7856", "Florence rooftops", 100)
+    photo("m-eu-1", "photo-1499856871958-5b9627545d1a", "Lisbon, golden hour", 118, "user-rithik"),
+    photo("m-eu-2", "photo-1533105079780-92b9be482077", "Pastéis & espresso", 115, "user-amal"),
+    photo("m-eu-3", "photo-1502602898657-3e91760cbb34", "The Eiffel detour", 110, "user-rithik"),
+    photo("m-eu-4", "photo-1467269204594-9661b134dd2b", "Barcelona market run", 108, "user-ryan"),
+    photo("m-eu-5", "photo-1534430480872-3498386e7856", "Florence rooftops", 100, "user-amal")
   ],
   "evt-graduation": [
-    photo("m-grad-1", "photo-1523050854058-8df90110c9f1", "On stage", 45),
-    photo("m-grad-2", "photo-1571260899304-425eee4c7efc", "Quad portraits", 45),
-    photo("m-grad-3", "photo-1607013251379-e6eecfffe234", "After party", 44)
+    photo("m-grad-1", "photo-1523050854058-8df90110c9f1", "On stage", 45, "user-rithik"),
+    photo("m-grad-2", "photo-1571260899304-425eee4c7efc", "Quad portraits", 45, "user-amal"),
+    photo("m-grad-3", "photo-1607013251379-e6eecfffe234", "After party", 44, "user-rithik")
   ],
   "evt-amal-bday": [
-    photo("m-amal-1", "photo-1530103862676-de8c9debad1d", "Candles", 8),
-    photo("m-amal-2", "photo-1492684223066-81342ee5ff30", "Rooftop crowd", 8),
-    photo("m-amal-3", "photo-1481833761820-0509d3217039", "The cake reveal", 8)
+    photo("m-amal-1", "photo-1530103862676-de8c9debad1d", "Candles", 8, "user-amal"),
+    photo("m-amal-2", "photo-1492684223066-81342ee5ff30", "Rooftop crowd", 8, "user-rithik"),
+    photo("m-amal-3", "photo-1481833761820-0509d3217039", "The cake reveal", 8, "user-ryan")
   ],
   "evt-snowboarding": [
-    photo("m-snow-1", "photo-1551524559-8af4e6624178", "Top of the lift", 379),
-    photo("m-snow-2", "photo-1517490232338-06b912a786b5", "Powder line", 378),
-    photo("m-snow-3", "photo-1551698618-1dfe5d97d256", "Lodge beers", 378),
-    photo("m-snow-4", "photo-1486919704480-d56c2c6acfc1", "Night ride", 377)
+    photo("m-snow-1", "photo-1551524559-8af4e6624178", "Top of the lift", 379, "user-rithik"),
+    photo("m-snow-2", "photo-1517490232338-06b912a786b5", "Powder line", 378, "user-ryan"),
+    photo("m-snow-3", "photo-1551698618-1dfe5d97d256", "Lodge beers", 378, "user-rithik"),
+    photo("m-snow-4", "photo-1486919704480-d56c2c6acfc1", "Night ride", 377, "user-amal")
   ],
   "evt-frosh-week": [
-    photo("m-frosh-1", "photo-1523580494863-6f3031224c94", "Dorm move-in", 640),
-    photo("m-frosh-2", "photo-1541339907198-e08756dedf3f", "Lecture hall day one", 638),
-    photo("m-frosh-3", "photo-1517245386807-bb43f82c33c4", "Late-night library", 600)
+    photo("m-frosh-1", "photo-1523580494863-6f3031224c94", "Dorm move-in", 640, "user-rithik"),
+    photo("m-frosh-2", "photo-1541339907198-e08756dedf3f", "Lecture hall day one", 638, "user-rithik"),
+    photo("m-frosh-3", "photo-1517245386807-bb43f82c33c4", "Late-night library", 600, "user-rithik")
   ],
   "evt-draft-roadtrip": [
-    photo("m-road-1", "photo-1469854523086-cc02fe5d8800", "First overlook", 2),
-    photo("m-road-2", "photo-1502920917128-1aa500764cbd", "Gas station diner", 1)
+    photo("m-road-1", "photo-1469854523086-cc02fe5d8800", "First overlook", 2, "user-rithik"),
+    photo("m-road-2", "photo-1502920917128-1aa500764cbd", "Gas station diner", 1, "user-rithik")
+  ]
+};
+
+export const seedReactions: Record<string, DemoReaction[]> = {
+  "m-eu-1": [
+    { id: "rx-1", mediaId: "m-eu-1", userId: "user-amal", emoji: "❤️", createdAt: daysAgo(115) },
+    { id: "rx-2", mediaId: "m-eu-1", userId: "user-ryan", emoji: "🔥", createdAt: daysAgo(114) }
+  ],
+  "m-eu-3": [
+    { id: "rx-3", mediaId: "m-eu-3", userId: "user-amal", emoji: "❤️", createdAt: daysAgo(108) }
+  ],
+  "m-amal-1": [
+    { id: "rx-4", mediaId: "m-amal-1", userId: "user-rithik", emoji: "❤️", createdAt: daysAgo(7) },
+    { id: "rx-5", mediaId: "m-amal-1", userId: "user-ryan", emoji: "🎉", createdAt: daysAgo(7) }
+  ],
+  "m-amal-3": [
+    { id: "rx-6", mediaId: "m-amal-3", userId: "user-rithik", emoji: "🔥", createdAt: daysAgo(7) },
+    { id: "rx-7", mediaId: "m-amal-3", userId: "user-amal", emoji: "❤️", createdAt: daysAgo(7) }
+  ]
+};
+
+export const seedComments: Record<string, DemoComment[]> = {
+  "m-eu-1": [
+    { id: "c-1", mediaId: "m-eu-1", userId: "user-amal", body: "Pastel buildings still living rent-free in my head", createdAt: hoursAgo(2750) },
+    { id: "c-2", mediaId: "m-eu-1", userId: "user-rithik", body: "That walk back from dinner 🌅", createdAt: hoursAgo(2748) }
+  ],
+  "m-amal-1": [
+    { id: "c-3", mediaId: "m-amal-1", userId: "user-rithik", body: "Best night of the year", createdAt: hoursAgo(168) },
+    { id: "c-4", mediaId: "m-amal-1", userId: "user-ryan", body: "We need to do this every year", createdAt: hoursAgo(160) }
+  ],
+  "m-snow-1": [
+    { id: "c-5", mediaId: "m-snow-1", userId: "user-ryan", body: "first run of the day hits different", createdAt: hoursAgo(9000) }
   ]
 };
 
@@ -267,6 +346,7 @@ export function toEventSummary(event: DemoEvent, media: Record<string, DemoMedia
     visibility: event.visibility,
     contributorScope: event.contributorScope,
     mediaCount: computeMediaCount(event.id, media),
-    mediaCap: event.mediaCap ?? null
+    mediaCap: event.mediaCap ?? null,
+    mediaCapPerUser: event.mediaCapPerUser ?? null
   };
 }

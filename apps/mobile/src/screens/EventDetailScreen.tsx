@@ -5,7 +5,7 @@ import { ArrowLeft, Camera, Hourglass, ImagePlus, Lock, MapPin } from "lucide-re
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Dimensions, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { CapsuleState } from "@time-capsule/shared";
+import type { CapsuleState, MediaDetail } from "@time-capsule/shared";
 import { api } from "../api/client";
 import { pickAndUploadMedia } from "../api/uploads";
 import { AnimatedPressable } from "../components/AnimatedPressable";
@@ -15,14 +15,6 @@ import { Stagger } from "../components/Stagger";
 import { colors, radii, type } from "../design/theme";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { daysUntil, formatDate, timeUntil } from "../utils/dates";
-
-interface Media {
-  id: string;
-  url: string;
-  kind: string;
-  caption?: string;
-  capturedAt?: string;
-}
 
 interface EventDetail {
   id: string;
@@ -35,7 +27,9 @@ interface EventDetail {
   collectionClosesAt?: string | null;
   state?: CapsuleState;
   mediaCap?: number | null;
-  media: Media[];
+  mediaCapPerUser?: number | null;
+  mediaCountForMe?: number;
+  media: MediaDetail[];
 }
 
 const HERO_HEIGHT = 280;
@@ -104,7 +98,10 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
   const collectionMinutesLeft = event.collectionClosesAt
     ? Math.max(0, Math.floor(timeUntil(event.collectionClosesAt).totalMs / 60_000))
     : 0;
-  const capReached = !!event.mediaCap && event.media.length >= event.mediaCap;
+  const totalCapReached = !!event.mediaCap && event.media.length >= event.mediaCap;
+  const myCount = event.mediaCountForMe ?? 0;
+  const perUserCapReached = !!event.mediaCapPerUser && myCount >= event.mediaCapPerUser;
+  const capReached = totalCapReached || perUserCapReached;
 
   const heroScale = scrollY.interpolate({ inputRange: [-200, 0], outputRange: [1.30, 1], extrapolate: "clamp" });
   const heroTranslate = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT], outputRange: [0, -HERO_HEIGHT / 2], extrapolate: "clamp" });
@@ -201,8 +198,15 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
               </Stagger>
             ) : null}
 
-            {capReached ? (
-              <Text style={styles.capNote}>You've reached the {event.mediaCap}-photo cap.</Text>
+            {perUserCapReached ? (
+              <Text style={styles.capNote}>You've added all {event.mediaCapPerUser} of your photos.</Text>
+            ) : event.mediaCapPerUser ? (
+              <Text style={styles.capNote}>
+                You · {myCount} / {event.mediaCapPerUser}
+                {event.mediaCap ? ` · capsule ${event.media.length} / ${event.mediaCap}` : ""}
+              </Text>
+            ) : totalCapReached ? (
+              <Text style={styles.capNote}>Capsule cap reached ({event.mediaCap}).</Text>
             ) : event.mediaCap ? (
               <Text style={styles.capNote}>{event.media.length} / {event.mediaCap} photos</Text>
             ) : null}
@@ -218,13 +222,35 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
             </Text>
           </View>
         }
-        renderItem={({ item, index }) => (
-          <Stagger delay={120 + index * 50} translate={14}>
-            <View style={styles.tile}>
-              <Image source={{ uri: item.url }} style={styles.tileImage} contentFit="cover" transition={400} />
-            </View>
-          </Stagger>
-        )}
+        renderItem={({ item, index }) => {
+          const reactionTotal = item.reactions.reduce((sum, r) => sum + r.count, 0);
+          const topReaction = item.reactions[0];
+          return (
+            <Stagger delay={120 + index * 50} translate={14}>
+              <AnimatedPressable
+                onPress={() => navigation.navigate("PhotoViewer", { eventId: event.id, startIndex: index })}
+                style={styles.tile}
+              >
+                <Image source={{ uri: item.url }} style={styles.tileImage} contentFit="cover" transition={400} />
+                {(reactionTotal > 0 || item.comments.length > 0) ? (
+                  <View style={styles.tileFooter}>
+                    {topReaction ? (
+                      <View style={styles.tileChip}>
+                        <Text style={styles.tileChipEmoji}>{topReaction.emoji}</Text>
+                        <Text style={styles.tileChipCount}>{reactionTotal}</Text>
+                      </View>
+                    ) : null}
+                    {item.comments.length > 0 ? (
+                      <View style={styles.tileChip}>
+                        <Text style={styles.tileChipCount}>💬 {item.comments.length}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+              </AnimatedPressable>
+            </Stagger>
+          );
+        }}
       />
     </Screen>
   );
@@ -308,5 +334,25 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: colors.dusk
   },
-  tileImage: { flex: 1 }
+  tileImage: { flex: 1 },
+  tileFooter: {
+    position: "absolute",
+    left: 8,
+    bottom: 8,
+    flexDirection: "row",
+    gap: 6
+  },
+  tileChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(8,6,12,0.65)",
+    borderWidth: 1,
+    borderColor: colors.line
+  },
+  tileChipEmoji: { fontSize: 12 },
+  tileChipCount: { ...type.micro, color: colors.fog, letterSpacing: 0.5 }
 });
