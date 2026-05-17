@@ -25,6 +25,7 @@ import { GiftCapsuleScreen } from "../screens/GiftCapsuleScreen";
 import { PhotoViewerScreen } from "../screens/PhotoViewerScreen";
 import { PrivacyScreen } from "../screens/PrivacyScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
+import { RecapReelScreen } from "../screens/RecapReelScreen";
 import { SearchScreen } from "../screens/SearchScreen";
 import { UnlockCeremonyScreen } from "../screens/UnlockCeremonyScreen";
 import { VoiceNoteScreen } from "../screens/VoiceNoteScreen";
@@ -46,6 +47,7 @@ export type RootStackParamList = {
   Friends: undefined;
   FriendFeed: undefined;
   GiftCapsule: undefined;
+  RecapReel: { year: number };
   Paywall: undefined;
 };
 
@@ -163,6 +165,7 @@ export function RootNavigator() {
           <Stack.Screen name="Friends" component={FriendsScreen} options={{ animation: "slide_from_right" }} />
           <Stack.Screen name="FriendFeed" component={FriendFeedScreen} options={{ animation: "slide_from_right" }} />
           <Stack.Screen name="GiftCapsule" component={GiftCapsuleScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
+          <Stack.Screen name="RecapReel" component={RecapReelScreen} options={{ animation: "fade", presentation: "modal" }} />
           <Stack.Screen name="Personalize" component={PersonalizeScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
           <Stack.Screen name="Paywall" component={PaywallScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
         </>

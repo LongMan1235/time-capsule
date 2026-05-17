@@ -526,6 +526,28 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     return { streakWeeks: streak, eventsOwned, memoriesAdded } as T;
   }
 
+  const recapMatch = path.match(/^\/recap\/(\d{4})$/);
+  if (method === "GET" && recapMatch) {
+    const year = parseInt(recapMatch[1], 10);
+    const startOfYear = new Date(year, 0, 1).getTime();
+    const endOfYear = new Date(year + 1, 0, 1).getTime();
+    const memories: Array<{ id: string; url: string; caption?: string | null; eventTitle: string; eventId: string; capturedAt?: string | null }> = [];
+    for (const [eventId, list] of Object.entries(store.media)) {
+      const event = store.events.find((e) => e.id === eventId);
+      if (!event) continue;
+      if (computeState(event) === "LOCKED") continue;
+      for (const m of list) {
+        if (!m.capturedAt) continue;
+        const t = new Date(m.capturedAt).getTime();
+        if (t >= startOfYear && t < endOfYear) {
+          memories.push({ id: m.id, url: m.url, caption: m.caption ?? null, eventTitle: event.title, eventId, capturedAt: m.capturedAt });
+        }
+      }
+    }
+    memories.sort((a, b) => new Date(a.capturedAt!).getTime() - new Date(b.capturedAt!).getTime());
+    return { year, memories } as T;
+  }
+
   if (route === "GET /explore/public") {
     const events: EventSummary[] = store.events
       .filter((event) => event.isPublic)

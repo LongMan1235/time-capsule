@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../api/client";
+import { FloatingReactions, type FloatingReaction } from "../components/FloatingReactions";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { Screen } from "../components/Screen";
 import { colors, gradients, radii, type } from "../design/theme";
@@ -28,6 +29,7 @@ export function UnlockCeremonyScreen({ navigation, route }: NativeStackScreenPro
   const insets = useSafeAreaInsets();
   const [event, setEvent] = useState<UnlockEvent>();
   const [phase, setPhase] = useState<Phase>("loading");
+  const [floatFeed, setFloatFeed] = useState<FloatingReaction[]>([]);
 
   const seal = useRef(new Animated.Value(0)).current;
   const leftHalf = useRef(new Animated.Value(0)).current;
@@ -68,6 +70,26 @@ export function UnlockCeremonyScreen({ navigation, route }: NativeStackScreenPro
       Animated.timing(flash, { toValue: 0, duration: 400, useNativeDriver: true }).start();
       setPhase("reveal");
       Animated.timing(letter, { toValue: 1, duration: 720, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+      simulateCoWatchers();
+    });
+  }
+
+  function simulateCoWatchers() {
+    const lineup: Array<{ emoji: string; name: string; delay: number }> = [
+      { emoji: "❤️", name: "Amal", delay: 400 },
+      { emoji: "🔥", name: "Ryan", delay: 900 },
+      { emoji: "🎉", name: "Amal", delay: 1500 },
+      { emoji: "😂", name: "Ryan", delay: 2300 },
+      { emoji: "❤️", name: "Amal", delay: 3100 },
+      { emoji: "🥹", name: "Ryan", delay: 4000 }
+    ];
+    lineup.forEach((event, i) => {
+      setTimeout(() => {
+        setFloatFeed((prev) => [
+          ...prev,
+          { id: `${Date.now()}-${i}`, emoji: event.emoji, fromName: event.name }
+        ]);
+      }, event.delay);
     });
   }
 
@@ -141,6 +163,14 @@ export function UnlockCeremonyScreen({ navigation, route }: NativeStackScreenPro
         )}
       </Animated.View>
 
+      <FloatingReactions feed={floatFeed} />
+
+      {phase === "reveal" ? (
+        <View pointerEvents="box-none" style={styles.coWatchers}>
+          <Text style={styles.coWatchersText}>Amal, Ryan are here · live</Text>
+        </View>
+      ) : null}
+
       <View style={[styles.footer, { paddingBottom: insets.bottom + 28 }]}>
         {phase === "reveal" ? (
           <PrimaryButton onPress={complete} icon={ArrowRight}>
@@ -200,5 +230,16 @@ const styles = StyleSheet.create({
   letterLabel: { ...type.micro, color: colors.mutedDim },
   letterBody: { ...type.subtitle, color: colors.ink, fontStyle: "italic", lineHeight: 24 },
   letterAuthor: { ...type.caption, color: colors.mutedDim, marginTop: 4, alignSelf: "flex-end" },
-  footer: { paddingHorizontal: 24, paddingTop: 18 }
+  footer: { paddingHorizontal: 24, paddingTop: 18 },
+  coWatchers: {
+    alignSelf: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.lineBright,
+    backgroundColor: "rgba(8,6,12,0.55)",
+    marginTop: 14
+  },
+  coWatchersText: { ...type.micro, color: colors.fog, letterSpacing: 1.4 }
 });

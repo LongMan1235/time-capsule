@@ -1,7 +1,7 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { Image } from "expo-image";
-import { CalendarHeart, Compass, Plus } from "lucide-react-native";
+import { CalendarHeart, Clapperboard, Compass, Plus } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { EventSummary } from "@time-capsule/shared";
@@ -152,10 +152,17 @@ export function HomeScreen() {
               />
             </Stagger>
 
-            <Stagger delay={180} style={{ marginBottom: 16 }}>
+            <Stagger delay={180} style={styles.linksRow}>
               <AnimatedPressable onPress={() => navigation.navigate("Explore")} style={styles.exploreRow}>
                 <Compass color={colors.muted} size={14} />
-                <Text style={styles.exploreText}>Explore public capsules</Text>
+                <Text style={styles.exploreText}>Explore</Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => navigation.navigate("RecapReel", { year: new Date().getFullYear() - 1 })}
+                style={styles.exploreRow}
+              >
+                <Clapperboard color={colors.muted} size={14} />
+                <Text style={styles.exploreText}>Year recap</Text>
               </AnimatedPressable>
             </Stagger>
           </Animated.View>
@@ -247,6 +254,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card
   },
   exploreText: { ...type.caption, color: colors.muted, fontWeight: "600" },
+  linksRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
   empty: { alignItems: "center", gap: 12, paddingVertical: 60, paddingHorizontal: 12 },
   emptyTitle: { ...type.title, color: colors.fog, textAlign: "center" },
   emptyBody: { ...type.body, color: colors.muted, textAlign: "center" }
