@@ -27,12 +27,14 @@ interface DemoStore {
   users: DemoUser[];
   credentials: DemoCredential[];
   currentUserId?: string;
+  friendships: Array<{ userId: string; friendId: string; createdAt: string }>;
+  gifts: Array<{ id: string; capsuleId: string; fromUserId: string; toUserId: string; message?: string; createdAt: string; deliverOn?: string }>;
   privacy: { aiOptIn: boolean; faceRecognitionOptIn: boolean };
   subscription: { tier: "FREE" | "PLUS" | "PREMIUM" };
 }
 
 const STORAGE_KEY = "time-capsule-demo-store";
-const STORE_VERSION = 3;
+const STORE_VERSION = 4;
 
 let store: DemoStore = freshStore();
 let hydrated = false;
@@ -48,6 +50,11 @@ function freshStore(): DemoStore {
     users: [...seedUsers],
     credentials: [...seedCredentials],
     currentUserId: undefined,
+    friendships: [
+      { userId: "user-rithik", friendId: "user-amal", createdAt: new Date().toISOString() },
+      { userId: "user-rithik", friendId: "user-ryan", createdAt: new Date().toISOString() }
+    ],
+    gifts: [],
     privacy: { aiOptIn: false, faceRecognitionOptIn: false },
     subscription: { tier: "FREE" }
   };
@@ -665,6 +672,112 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
 
   if (route === "POST /privacy/delete-request") {
     return { ok: true, requestedAt: new Date().toISOString() } as T;
+  }
+
+  if (route === "GET /friends") {
+    const userId = store.currentUserId ?? "user-rithik";
+    const friendIds = store.friendships
+      .filter((f) => f.userId === userId)
+      .map((f) => f.friendId);
+    const friends = friendIds
+      .map((id) => store.users.find((u) => u.id === id))
+      .filter((u): u is DemoUser => !!u)
+      .map(publicUser);
+    return { friends } as T;
+  }
+
+  if (route === "POST /friends") {
+    const userId = store.currentUserId ?? "user-rithik";
+    const body = parseBody<{ usernameOrEmail: string }>(options);
+    if (!body?.usernameOrEmail) throw new Error("Username or email required.");
+    const friend = findUser(body.usernameOrEmail);
+    if (!friend) throw new Error("Couldn't find a user by that name or email.");
+    if (friend.id === userId) throw new Error("That's you.");
+    if (!store.friendships.some((f) => f.userId === userId && f.friendId === friend.id)) {
+      store.friendships.push({ userId, friendId: friend.id, createdAt: new Date().toISOString() });
+      store.friendships.push({ userId: friend.id, friendId: userId, createdAt: new Date().toISOString() });
+      await persist();
+    }
+    return { friend: publicUser(friend) } as T;
+  }
+
+  const removeFriendMatch = path.match(/^\/friends\/([^/]+)$/);
+  if (method === "DELETE" && removeFriendMatch) {
+    const userId = store.currentUserId ?? "user-rithik";
+    const friendId = removeFriendMatch[1];
+    store.friendships = store.friendships.filter(
+      (f) => !(f.userId === userId && f.friendId === friendId) && !(f.userId === friendId && f.friendId === userId)
+    );
+    await persist();
+    return { ok: true } as T;
+  }
+
+  if (route === "GET /feed/friends") {
+    const userId = store.currentUserId ?? "user-rithik";
+    const friendIds = new Set(store.friendships.filter((f) => f.userId === userId).map((f) => f.friendId));
+    const items: Array<{ kind: "memory" | "capsule"; createdAt: string; eventId: string; eventTitle: string; mediaId?: string; mediaUrl?: string; caption?: string | null; authorId: string; authorName: string }> = [];
+    for (const [eventId, list] of Object.entries(store.media)) {
+      const event = store.events.find((e) => e.id === eventId);
+      if (!event) continue;
+      for (const media of list) {
+        if (!friendIds.has(media.addedByUserId)) continue;
+        const author = store.users.find((u) => u.id === media.addedByUserId);
+        items.push({
+          kind: "memory",
+          createdAt: media.capturedAt ?? new Date().toISOString(),
+          eventId,
+          eventTitle: event.title,
+          mediaId: media.id,
+          mediaUrl: media.url,
+          caption: media.caption ?? null,
+          authorId: media.addedByUserId,
+          authorName: author?.displayName ?? "Someone"
+        });
+      }
+    }
+    items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return { items: items.slice(0, 30) } as T;
+  }
+
+  const shareMatch = path.match(/^\/events\/([^/]+)\/share$/);
+  if (method === "POST" && shareMatch) {
+    const eventId = shareMatch[1];
+    const event = store.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    const slug = event.id.replace(/^evt-/, "");
+    return {
+      url: `https://timecapsule.app/c/${slug}`,
+      deepLink: `timecapsule://capsule/${eventId}`
+    } as T;
+  }
+
+  if (route === "POST /gifts") {
+    const userId = store.currentUserId ?? "user-rithik";
+    const body = parseBody<{ capsuleId: string; toUsernameOrEmail: string; message?: string; deliverOn?: string }>(options);
+    if (!body?.capsuleId) throw new Error("Pick a capsule to gift.");
+    if (!body.toUsernameOrEmail) throw new Error("Who's it for?");
+    const recipient = findUser(body.toUsernameOrEmail) ?? ensureGuestUser(body.toUsernameOrEmail);
+    const event = store.events.find((e) => e.id === body.capsuleId);
+    if (!event) throw new Error("Capsule not found.");
+    const gift = {
+      id: makeId("gift"),
+      capsuleId: body.capsuleId,
+      fromUserId: userId,
+      toUserId: recipient.id,
+      message: body.message,
+      deliverOn: body.deliverOn,
+      createdAt: new Date().toISOString()
+    };
+    store.gifts.push(gift);
+    await persist();
+    return { gift } as T;
+  }
+
+  if (route === "GET /gifts") {
+    const userId = store.currentUserId ?? "user-rithik";
+    const sent = store.gifts.filter((g) => g.fromUserId === userId);
+    const received = store.gifts.filter((g) => g.toUserId === userId);
+    return { sent, received } as T;
   }
 
   if (route === "GET /health") {

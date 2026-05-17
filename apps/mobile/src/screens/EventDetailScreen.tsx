@@ -2,9 +2,9 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
-import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Navigation, ScrollText } from "lucide-react-native";
+import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Navigation, ScrollText, Share2 } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Dimensions, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Dimensions, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { CapsuleState, MediaDetail } from "@time-capsule/shared";
 import { api } from "../api/client";
@@ -69,6 +69,20 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
     return api<{ event: EventDetail }>(`/events/${route.params.eventId}`)
       .then((response) => setEvent(response.event))
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load event"));
+  }
+
+  async function shareCapsule() {
+    if (!event) return;
+    try {
+      const response = await api<{ url: string; deepLink: string }>(`/events/${event.id}/share`, { method: "POST" });
+      await Share.share({
+        message: `${event.title} — a Time Capsule\n${response.url}`,
+        url: response.url,
+        title: event.title
+      });
+    } catch (error) {
+      Alert.alert("Could not share", error instanceof Error ? error.message : "Try again.");
+    }
   }
 
   async function pickFromLibrary() {
@@ -184,6 +198,9 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
       <View style={[styles.topBar, { top: insets.top + 8 }]} pointerEvents="box-none">
         <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft color={colors.fog} size={20} />
+        </AnimatedPressable>
+        <AnimatedPressable onPress={shareCapsule} style={styles.backButton}>
+          <Share2 color={colors.fog} size={18} />
         </AnimatedPressable>
       </View>
 

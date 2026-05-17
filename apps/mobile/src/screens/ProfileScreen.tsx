@@ -1,8 +1,9 @@
 import { Image } from "expo-image";
-import { ArrowLeft, Flame, ImageIcon, Lock, Pencil } from "lucide-react-native";
+import { ArrowLeft, ChevronRight, Flame, Gift, ImageIcon, Lock, Pencil, Users } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../api/client";
 import { AnimatedPressable } from "../components/AnimatedPressable";
@@ -10,6 +11,7 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
 import { colors, radii, type } from "../design/theme";
+import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useSessionStore } from "../store/session";
 
 interface Stats {
@@ -20,7 +22,7 @@ interface Stats {
 
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const user = useSessionStore((state) => state.user);
   const setUser = useSessionStore((state) => state.setUser);
   const [stats, setStats] = useState<Stats | undefined>();
@@ -123,9 +125,35 @@ export function ProfileScreen() {
             </View>
           </View>
         </Stagger>
+
+        <Stagger delay={540}>
+          <View style={styles.menuGroup}>
+            <ProfileMenuRow Icon={Users} title="Friends" onPress={() => navigation.navigate("Friends")} />
+            <Divider />
+            <ProfileMenuRow Icon={ImageIcon} title="Friend feed" onPress={() => navigation.navigate("FriendFeed")} />
+            <Divider />
+            <ProfileMenuRow Icon={Gift} title="Gift a capsule" onPress={() => navigation.navigate("GiftCapsule")} />
+          </View>
+        </Stagger>
       </ScrollView>
     </Screen>
   );
+}
+
+function ProfileMenuRow({ Icon, title, onPress }: { Icon: React.ComponentType<{ color?: string; size?: number }>; title: string; onPress: () => void }) {
+  return (
+    <AnimatedPressable onPress={onPress} style={styles.menuRow}>
+      <View style={styles.menuIcon}>
+        <Icon color={colors.fog} size={14} />
+      </View>
+      <Text style={styles.menuTitle}>{title}</Text>
+      <ChevronRight color={colors.muted} size={14} />
+    </AnimatedPressable>
+  );
+}
+
+function Divider() {
+  return <View style={styles.menuDivider} />;
 }
 
 function StatTile({
@@ -173,5 +201,10 @@ const styles = StyleSheet.create({
   editActions: { flexDirection: "row", gap: 10 },
   streakCard: { flexDirection: "row", gap: 10, padding: 14, borderRadius: radii.md, borderWidth: 1, borderColor: "rgba(232,194,107,0.30)", backgroundColor: "rgba(232,194,107,0.06)" },
   streakTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
-  streakBody: { ...type.caption, color: colors.muted, marginTop: 2 }
+  streakBody: { ...type.caption, color: colors.muted, marginTop: 2 },
+  menuGroup: { borderRadius: radii.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, overflow: "hidden", marginTop: 4 },
+  menuRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 14 },
+  menuIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
+  menuTitle: { ...type.body, color: colors.fog, fontWeight: "600", flex: 1 },
+  menuDivider: { height: 1, backgroundColor: colors.line, marginLeft: 56 }
 });
