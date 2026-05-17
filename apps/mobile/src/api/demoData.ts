@@ -86,6 +86,8 @@ export interface DemoEvent extends Omit<EventSummary, "state" | "mediaCount"> {
   ceremonySeenAt?: string | null;
   isPublic?: boolean;
   templateId?: string | null;
+  spotifyUri?: string | null;
+  spotifyTitle?: string | null;
 }
 
 function daysFromNow(days: number) {
@@ -132,6 +134,8 @@ export const seedEvents: DemoEvent[] = [
     ceremonySeenAt: null,
     isPublic: false,
     templateId: "trip",
+    spotifyUri: "https://open.spotify.com/track/3sP08wT0lt9HrGEX3FrV2A",
+    spotifyTitle: "Walking on a Dream — Empire of the Sun",
     createdAt: daysAgo(120)
   },
   {
@@ -380,6 +384,8 @@ export function toEventSummary(event: DemoEvent, media: Record<string, DemoMedia
     geoLockRadiusMeters: event.geoLockRadiusMeters ?? null,
     ceremonySeenAt: event.ceremonySeenAt ?? null,
     isPublic: event.isPublic ?? false,
-    templateId: event.templateId ?? null
+    templateId: event.templateId ?? null,
+    spotifyUri: event.spotifyUri ?? null,
+    spotifyTitle: event.spotifyTitle ?? null
   };
 }

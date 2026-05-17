@@ -27,6 +27,7 @@ import { PrivacyScreen } from "../screens/PrivacyScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { SearchScreen } from "../screens/SearchScreen";
 import { UnlockCeremonyScreen } from "../screens/UnlockCeremonyScreen";
+import { VoiceNoteScreen } from "../screens/VoiceNoteScreen";
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -36,6 +37,7 @@ export type RootStackParamList = {
   Countdown: { eventId: string; title: string; unlockAt: string; createdAt?: string };
   CreateEvent: undefined;
   CameraCapture: { eventId: string; title: string };
+  VoiceNote: { eventId: string; title: string };
   PhotoViewer: { eventId: string; startIndex?: number };
   UnlockCeremony: { eventId: string };
   Profile: undefined;
@@ -153,6 +155,7 @@ export function RootNavigator() {
           <Stack.Screen name="Countdown" component={CountdownScreen} options={{ animation: "fade", presentation: "modal" }} />
           <Stack.Screen name="CreateEvent" component={CreateEventScreen} options={{ animation: "slide_from_bottom" }} />
           <Stack.Screen name="CameraCapture" component={CameraCaptureScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
+          <Stack.Screen name="VoiceNote" component={VoiceNoteScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
           <Stack.Screen name="PhotoViewer" component={PhotoViewerScreen} options={{ animation: "fade" }} />
           <Stack.Screen name="UnlockCeremony" component={UnlockCeremonyScreen} options={{ animation: "fade", presentation: "modal" }} />
           <Stack.Screen name="Profile" component={ProfileScreen} options={{ animation: "slide_from_right" }} />

@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
-import { CalendarClock, Camera, EyeOff, Globe, Heading2, Hourglass, Lock, Mail, MapPin, Navigation, User, Users, X } from "lucide-react-native";
+import { CalendarClock, Camera, EyeOff, Globe, Heading2, Hourglass, Lock, Mail, MapPin, Music2, Navigation, User, Users, X } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -47,6 +47,13 @@ function localDateLabel(iso: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
 }
 
+function extractSpotifyTitle(url: string) {
+  if (url.includes("track/")) return "Spotify track";
+  if (url.includes("album/")) return "Spotify album";
+  if (url.includes("playlist/")) return "Spotify playlist";
+  return "Spotify link";
+}
+
 export function CreateEventScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -66,6 +73,7 @@ export function CreateEventScreen() {
   const [geoLockRadiusMeters, setGeoLockRadiusMeters] = useState(200);
   const [templateId, setTemplateId] = useState("blank");
   const [isPublic, setIsPublic] = useState(false);
+  const [spotifyUri, setSpotifyUri] = useState("");
   const [saving, setSaving] = useState(false);
 
   function applyTemplate(id: string) {
@@ -130,7 +138,9 @@ export function CreateEventScreen() {
           latitude: geoLockEnabled && geoCoords ? geoCoords.latitude : undefined,
           longitude: geoLockEnabled && geoCoords ? geoCoords.longitude : undefined,
           isPublic,
-          templateId
+          templateId,
+          spotifyUri: spotifyUri.trim() ? spotifyUri.trim() : null,
+          spotifyTitle: spotifyUri.trim() ? extractSpotifyTitle(spotifyUri.trim()) : null
         })
       });
       navigation.goBack();
@@ -316,6 +326,22 @@ export function CreateEventScreen() {
               </SettingsBlock>
             </Stagger>
           ) : null}
+
+          <Stagger delay={700}>
+            <SettingsBlock Icon={Music2} title="Soundtrack" value={spotifyUri ? "Linked" : "Optional"}>
+              <TextInput
+                value={spotifyUri}
+                onChangeText={setSpotifyUri}
+                placeholder="Paste a Spotify URL"
+                placeholderTextColor={colors.mutedDim}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.letterInput}
+                selectionColor={colors.gold}
+              />
+              <Text style={styles.helperText}>Plays a tap-to-open link on the capsule page (and inside the unlock ceremony).</Text>
+            </SettingsBlock>
+          </Stagger>
 
           <Stagger delay={720}>
             <SettingsBlock Icon={Mail} title="Letter to future-you">

@@ -34,6 +34,8 @@ export interface EventSummary {
   ceremonySeenAt?: string | null;
   isPublic?: boolean;
   templateId?: string | null;
+  spotifyUri?: string | null;
+  spotifyTitle?: string | null;
 }
 
 export interface MediaReaction {

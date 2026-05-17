@@ -244,6 +244,8 @@ interface CreateEventBody {
   geoLockRadiusMeters?: number | null;
   isPublic?: boolean;
   templateId?: string | null;
+  spotifyUri?: string | null;
+  spotifyTitle?: string | null;
 }
 
 interface SearchBody {
@@ -377,6 +379,8 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
       ceremonySeenAt: null,
       isPublic: body.isPublic ?? false,
       templateId: body.templateId ?? null,
+      spotifyUri: body.spotifyUri ?? null,
+      spotifyTitle: body.spotifyTitle ?? null,
       createdAt: new Date().toISOString()
     };
     store.events.unshift(event);
@@ -438,6 +442,8 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
         disposableHidden,
         geoLockRadiusMeters: event.geoLockRadiusMeters ?? null,
         ceremonySeenAt: event.ceremonySeenAt ?? null,
+        spotifyUri: event.spotifyUri ?? null,
+        spotifyTitle: event.spotifyTitle ?? null,
         media
       }
     } as T;

@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Audio, ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
-import { ArrowLeft, MessageCircle, MoreHorizontal, Send } from "lucide-react-native";
+import { ArrowLeft, MessageCircle, Mic, MoreHorizontal, Pause, Play, Send } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS,
@@ -199,7 +200,19 @@ export function PhotoViewerScreen({ navigation, route }: NativeStackScreenProps<
           }}
           renderItem={({ item }) => (
             <TouchableOpacity activeOpacity={1} onLongPress={openActions} style={styles.slide}>
-              <Image source={{ uri: item.url }} style={styles.image} contentFit="contain" transition={250} />
+              {item.kind === "VIDEO" ? (
+                <Video
+                  source={{ uri: item.url }}
+                  style={styles.image}
+                  resizeMode={ResizeMode.CONTAIN}
+                  useNativeControls
+                  isLooping
+                />
+              ) : item.kind === "VOICE_NOTE" ? (
+                <VoicePreview uri={item.url} caption={item.caption ?? undefined} />
+              ) : (
+                <Image source={{ uri: item.url }} style={styles.image} contentFit="contain" transition={250} />
+              )}
             </TouchableOpacity>
           )}
         />
@@ -289,6 +302,52 @@ function CommentsList({ comments }: { comments: MediaComment[] }) {
       {comments.length > 3 ? (
         <Text style={styles.commentsMore}>+{comments.length - 3} more</Text>
       ) : null}
+    </View>
+  );
+}
+
+function VoicePreview({ uri, caption }: { uri: string; caption?: string }) {
+  const [sound, setSound] = useState<Audio.Sound | undefined>();
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      sound?.unloadAsync().catch(() => undefined);
+    };
+  }, [sound]);
+
+  async function toggle() {
+    if (sound) {
+      if (playing) {
+        await sound.pauseAsync();
+        setPlaying(false);
+      } else {
+        await sound.playAsync();
+        setPlaying(true);
+      }
+      return;
+    }
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+      const { sound: created } = await Audio.Sound.createAsync({ uri });
+      created.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) setPlaying(false);
+      });
+      setSound(created);
+      await created.playAsync();
+      setPlaying(true);
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <View style={styles.voiceCard}>
+      <Mic color={colors.gold} size={24} />
+      <Text style={styles.voiceCaption}>{caption ?? "Voice note"}</Text>
+      <TouchableOpacity onPress={toggle} style={styles.voicePlay}>
+        {playing ? <Pause color={colors.ink} size={20} fill={colors.ink} /> : <Play color={colors.ink} size={20} fill={colors.ink} />}
+      </TouchableOpacity>
     </View>
   );
 }
@@ -404,5 +463,8 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     backgroundColor: colors.card
   },
-  sendButtonReady: { backgroundColor: colors.gold, borderColor: colors.gold }
+  sendButtonReady: { backgroundColor: colors.gold, borderColor: colors.gold },
+  voiceCard: { width: SCREEN_WIDTH - 48, padding: 24, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.cardElevated, alignItems: "center", gap: 14 },
+  voiceCaption: { ...type.body, color: colors.fog, fontWeight: "600", textAlign: "center" },
+  voicePlay: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center" }
 });

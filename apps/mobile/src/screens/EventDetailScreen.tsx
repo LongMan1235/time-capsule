@@ -1,8 +1,9 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Linking from "expo-linking";
 import * as Location from "expo-location";
-import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Navigation, ScrollText, Share2 } from "lucide-react-native";
+import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Mic, Music2, Navigation, Play, ScrollText, Share2 } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Dimensions, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -39,6 +40,8 @@ interface EventDetail {
   disposableHidden?: boolean;
   geoLockRadiusMeters?: number | null;
   ceremonySeenAt?: string | null;
+  spotifyUri?: string | null;
+  spotifyTitle?: string | null;
   media: MediaDetail[];
 }
 
@@ -288,6 +291,22 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
               </Stagger>
             ) : null}
 
+            {event.spotifyUri ? (
+              <Stagger delay={570}>
+                <AnimatedPressable
+                  onPress={() => Linking.openURL(event.spotifyUri!).catch(() => undefined)}
+                  style={styles.spotifyCard}
+                >
+                  <Music2 color={colors.gold} size={14} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.spotifyEyebrow}>SOUNDTRACK</Text>
+                    <Text style={styles.spotifyTitle} numberOfLines={1}>{event.spotifyTitle ?? "Open in Spotify"}</Text>
+                  </View>
+                  <Text style={styles.spotifyOpen}>OPEN</Text>
+                </AnimatedPressable>
+              </Stagger>
+            ) : null}
+
             {event.unlockNote && !sealed ? (
               <Stagger delay={580}>
                 <View style={styles.letterPreview}>
@@ -301,18 +320,30 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
             ) : null}
 
             {collecting ? (
-              <Stagger delay={620} style={styles.captureRow}>
-                <View style={{ flex: 1 }}>
-                  <PrimaryButton onPress={openCamera} icon={Camera} disabled={capReached}>
-                    Camera
+              <>
+                <Stagger delay={620} style={styles.captureRow}>
+                  <View style={{ flex: 1 }}>
+                    <PrimaryButton onPress={openCamera} icon={Camera} disabled={capReached}>
+                      Camera
+                    </PrimaryButton>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <PrimaryButton onPress={pickFromLibrary} loading={uploading} icon={ImagePlus} variant="ghost" disabled={capReached}>
+                      Library
+                    </PrimaryButton>
+                  </View>
+                </Stagger>
+                <Stagger delay={660}>
+                  <PrimaryButton
+                    onPress={() => navigation.navigate("VoiceNote", { eventId: event.id, title: event.title })}
+                    icon={Mic}
+                    variant="ghost"
+                    disabled={capReached}
+                  >
+                    Voice note
                   </PrimaryButton>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <PrimaryButton onPress={pickFromLibrary} loading={uploading} icon={ImagePlus} variant="ghost" disabled={capReached}>
-                    Library
-                  </PrimaryButton>
-                </View>
-              </Stagger>
+                </Stagger>
+              </>
             ) : null}
 
             {perUserCapReached ? (
@@ -354,13 +385,27 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         renderItem={({ item, index }) => {
           const reactionTotal = item.reactions.reduce((sum, r) => sum + r.count, 0);
           const topReaction = item.reactions[0];
+          const isVoice = item.kind === "VOICE_NOTE";
+          const isVideo = item.kind === "VIDEO";
           return (
             <Stagger delay={120 + index * 50} translate={14}>
               <AnimatedPressable
                 onPress={() => navigation.navigate("PhotoViewer", { eventId: event.id, startIndex: index })}
                 style={styles.tile}
               >
-                <Image source={{ uri: item.url }} style={styles.tileImage} contentFit="cover" transition={400} />
+                {isVoice ? (
+                  <View style={[styles.tileImage, styles.tileVoice]}>
+                    <Mic color={colors.gold} size={28} />
+                    <Text style={styles.tileVoiceLabel}>{item.caption ?? "Voice note"}</Text>
+                  </View>
+                ) : (
+                  <Image source={{ uri: item.url }} style={styles.tileImage} contentFit="cover" transition={400} />
+                )}
+                {isVideo ? (
+                  <View style={styles.tileVideoBadge}>
+                    <Play color={colors.fog} size={14} fill={colors.fog} />
+                  </View>
+                ) : null}
                 {(reactionTotal > 0 || item.comments.length > 0) ? (
                   <View style={styles.tileFooter}>
                     {topReaction ? (
@@ -477,6 +522,21 @@ const styles = StyleSheet.create({
   },
   letterPreviewText: { ...type.caption, color: colors.ink, fontStyle: "italic", flex: 1, lineHeight: 18 },
   letterPreviewAuthor: { color: colors.mutedDim, fontStyle: "normal" },
+  spotifyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card,
+    marginTop: 6
+  },
+  spotifyEyebrow: { ...type.micro, color: colors.muted },
+  spotifyTitle: { ...type.caption, color: colors.fog, fontWeight: "600", marginTop: 2 },
+  spotifyOpen: { ...type.micro, color: colors.gold, letterSpacing: 1.4 },
   captureRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   capNote: { ...type.micro, color: colors.muted, marginTop: 8, letterSpacing: 1 },
   empty: { paddingVertical: 40, gap: 6, alignItems: "center" },
@@ -491,6 +551,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dusk
   },
   tileImage: { flex: 1 },
+  tileVoice: { backgroundColor: colors.dusk, alignItems: "center", justifyContent: "center", gap: 8 },
+  tileVoiceLabel: { ...type.caption, color: colors.fog, paddingHorizontal: 8, textAlign: "center" },
+  tileVideoBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(8,6,12,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.line
+  },
   tileFooter: {
     position: "absolute",
     left: 8,
