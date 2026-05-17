@@ -232,6 +232,9 @@ interface CreateEventBody {
   mediaCapPerUser?: number | null;
   latitude?: number;
   longitude?: number;
+  unlockNote?: string | null;
+  disposableMode?: boolean;
+  geoLockRadiusMeters?: number | null;
 }
 
 interface SearchBody {
@@ -342,6 +345,7 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
   if (route === "POST /events") {
     const body = parseBody<CreateEventBody>(options);
     if (!body?.title) throw new Error("Title is required");
+    const ownerId = store.currentUserId ?? "user-rithik";
     const event: DemoEvent = {
       id: makeId("evt"),
       title: body.title,
@@ -357,6 +361,11 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
       contributorScope: body.contributorScope ?? "OWNER_ONLY",
       mediaCap: body.mediaCap ?? null,
       mediaCapPerUser: body.mediaCapPerUser ?? null,
+      unlockNote: body.unlockNote ?? null,
+      unlockNoteAuthorId: body.unlockNote ? ownerId : null,
+      disposableMode: body.disposableMode ?? false,
+      geoLockRadiusMeters: body.geoLockRadiusMeters ?? null,
+      ceremonySeenAt: null,
       createdAt: new Date().toISOString()
     };
     store.events.unshift(event);
@@ -384,10 +393,15 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     const event = store.events.find((e) => e.id === eventId);
     if (!event) throw new Error("Event not found");
     const state = computeState(event);
-    const list = state === "LOCKED" ? [] : store.media[eventId] ?? [];
-    const media = list.map((m) => toMediaDetail(m));
+    const disposableHidden = !!event.disposableMode && state === "COLLECTING";
+    const allMedia = state === "LOCKED" ? [] : store.media[eventId] ?? [];
+    const visibleMedia = disposableHidden ? [] : allMedia;
+    const media = visibleMedia.map((m) => toMediaDetail(m));
     const myUserId = store.currentUserId ?? "user-rithik";
-    const myCount = list.filter((m) => m.addedByUserId === myUserId).length;
+    const myCount = allMedia.filter((m) => m.addedByUserId === myUserId).length;
+    const noteAuthor = event.unlockNoteAuthorId
+      ? store.users.find((u) => u.id === event.unlockNoteAuthorId)
+      : undefined;
     return {
       event: {
         id: event.id,
@@ -396,6 +410,8 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
         eventDate: event.eventDate,
         locationName: event.locationName,
         coverUrl: event.coverUrl,
+        latitude: event.latitude,
+        longitude: event.longitude,
         unlockAt: event.unlockAt,
         collectionClosesAt: event.collectionClosesAt,
         state,
@@ -404,9 +420,52 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
         mediaCap: event.mediaCap ?? null,
         mediaCapPerUser: event.mediaCapPerUser ?? null,
         mediaCountForMe: myCount,
+        mediaTotalCount: allMedia.length,
+        unlockNote: event.unlockNote ?? null,
+        unlockNoteAuthor: noteAuthor ? publicUser(noteAuthor) : null,
+        disposableMode: !!event.disposableMode,
+        disposableHidden,
+        geoLockRadiusMeters: event.geoLockRadiusMeters ?? null,
+        ceremonySeenAt: event.ceremonySeenAt ?? null,
         media
       }
     } as T;
+  }
+
+  const ceremonyMatch = path.match(/^\/events\/([^/]+)\/ceremony-seen$/);
+  if (method === "POST" && ceremonyMatch) {
+    const eventId = ceremonyMatch[1];
+    const event = store.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    event.ceremonySeenAt = new Date().toISOString();
+    await persist();
+    return { ok: true, ceremonySeenAt: event.ceremonySeenAt } as T;
+  }
+
+  if (route === "GET /memories/on-this-day") {
+    const now = new Date();
+    const matches = store.events
+      .filter((event) => {
+        if (computeState(event) !== "UNLOCKED") return false;
+        const date = new Date(event.eventDate);
+        return (
+          date.getMonth() === now.getMonth() &&
+          date.getDate() === now.getDate() &&
+          date.getFullYear() < now.getFullYear()
+        );
+      })
+      .map((event) => {
+        const yearsAgo = now.getFullYear() - new Date(event.eventDate).getFullYear();
+        const cover = (store.media[event.id] ?? [])[0];
+        return {
+          id: event.id,
+          title: event.title,
+          locationName: event.locationName,
+          coverUrl: cover?.url ?? event.coverUrl,
+          yearsAgo
+        };
+      });
+    return { memories: matches } as T;
   }
 
   const mediaDetailMatch = path.match(/^\/media\/([^/]+)$/);

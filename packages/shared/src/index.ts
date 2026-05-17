@@ -27,6 +27,11 @@ export interface EventSummary {
   mediaCount: number;
   mediaCap?: number | null;
   mediaCapPerUser?: number | null;
+  unlockNote?: string | null;
+  unlockNoteAuthor?: string | null;
+  disposableMode?: boolean;
+  geoLockRadiusMeters?: number | null;
+  ceremonySeenAt?: string | null;
 }
 
 export interface MediaReaction {

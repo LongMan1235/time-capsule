@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { ArrowLeft, Camera, Hourglass, ImagePlus, Lock, MapPin } from "lucide-react-native";
+import * as Location from "expo-location";
+import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Navigation, ScrollText } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Dimensions, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,13 +24,33 @@ interface EventDetail {
   eventDate: string;
   locationName?: string;
   coverUrl?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   unlockAt?: string | null;
   collectionClosesAt?: string | null;
   state?: CapsuleState;
   mediaCap?: number | null;
   mediaCapPerUser?: number | null;
   mediaCountForMe?: number;
+  mediaTotalCount?: number;
+  unlockNote?: string | null;
+  unlockNoteAuthor?: { displayName: string } | null;
+  disposableMode?: boolean;
+  disposableHidden?: boolean;
+  geoLockRadiusMeters?: number | null;
+  ceremonySeenAt?: string | null;
   media: MediaDetail[];
+}
+
+function distanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const x = Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * R * Math.asin(Math.sqrt(x));
 }
 
 const HERO_HEIGHT = 280;
@@ -40,6 +61,8 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
   const [event, setEvent] = useState<EventDetail>();
   const [error, setError] = useState<string>();
   const [uploading, setUploading] = useState(false);
+  const [geoDistance, setGeoDistance] = useState<number | undefined>();
+  const [geoChecking, setGeoChecking] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   async function load() {
@@ -76,6 +99,39 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
     return unsubscribe;
   }, [navigation]);
 
+  useEffect(() => {
+    if (!event) return;
+    if (event.state === "UNLOCKED" && !event.ceremonySeenAt) {
+      navigation.replace("UnlockCeremony", { eventId: event.id });
+    }
+  }, [event, navigation]);
+
+  useEffect(() => {
+    if (!event?.geoLockRadiusMeters || event.latitude == null || event.longitude == null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setGeoChecking(true);
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+        const position = await Location.getCurrentPositionAsync({});
+        if (cancelled) return;
+        const distance = distanceMeters(
+          { latitude: position.coords.latitude, longitude: position.coords.longitude },
+          { latitude: event.latitude!, longitude: event.longitude! }
+        );
+        setGeoDistance(distance);
+      } catch {
+        // ignore — user blocked or no signal
+      } finally {
+        if (!cancelled) setGeoChecking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [event?.id, event?.geoLockRadiusMeters, event?.latitude, event?.longitude]);
+
   if (error) {
     return (
       <Screen tone="paper">
@@ -98,10 +154,16 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
   const collectionMinutesLeft = event.collectionClosesAt
     ? Math.max(0, Math.floor(timeUntil(event.collectionClosesAt).totalMs / 60_000))
     : 0;
-  const totalCapReached = !!event.mediaCap && event.media.length >= event.mediaCap;
+  const totalCount = event.mediaTotalCount ?? event.media.length;
+  const totalCapReached = !!event.mediaCap && totalCount >= event.mediaCap;
   const myCount = event.mediaCountForMe ?? 0;
   const perUserCapReached = !!event.mediaCapPerUser && myCount >= event.mediaCapPerUser;
   const capReached = totalCapReached || perUserCapReached;
+
+  const geoLocked = !!event.geoLockRadiusMeters && event.latitude != null && event.longitude != null;
+  const geoFar = geoLocked && geoDistance != null && geoDistance > (event.geoLockRadiusMeters ?? 0);
+  const geoContentBlocked = geoLocked && event.state === "UNLOCKED" && geoFar;
+  const disposableHidden = !!event.disposableHidden;
 
   const heroScale = scrollY.interpolate({ inputRange: [-200, 0], outputRange: [1.30, 1], extrapolate: "clamp" });
   const heroTranslate = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT], outputRange: [0, -HERO_HEIGHT / 2], extrapolate: "clamp" });
@@ -183,6 +245,44 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
               </Stagger>
             ) : null}
 
+            {disposableHidden ? (
+              <Stagger delay={540}>
+                <View style={[styles.windowCard, styles.windowCardDisposable]}>
+                  <EyeOff color={colors.gold} size={14} />
+                  <Text style={styles.windowText}>
+                    Disposable mode · {totalCount} photo{totalCount === 1 ? "" : "s"} waiting. Reveal at the close of the window.
+                  </Text>
+                </View>
+              </Stagger>
+            ) : null}
+
+            {geoLocked ? (
+              <Stagger delay={560}>
+                <View style={[styles.windowCard, geoFar ? styles.windowCardGeoBlocked : null]}>
+                  <Navigation color={geoFar ? colors.rose : colors.gold} size={14} />
+                  <Text style={styles.windowText}>
+                    {geoChecking
+                      ? "Checking your location…"
+                      : geoFar
+                        ? `Visit ${event.locationName ?? "the place"} to open this capsule. ${formatDistance(geoDistance!)} away.`
+                        : `Geo-locked · open within ${event.geoLockRadiusMeters}m`}
+                  </Text>
+                </View>
+              </Stagger>
+            ) : null}
+
+            {event.unlockNote && !sealed ? (
+              <Stagger delay={580}>
+                <View style={styles.letterPreview}>
+                  <ScrollText color={colors.gold} size={14} />
+                  <Text style={styles.letterPreviewText}>
+                    “{event.unlockNote.length > 110 ? `${event.unlockNote.slice(0, 110)}…` : event.unlockNote}”
+                    {event.unlockNoteAuthor ? <Text style={styles.letterPreviewAuthor}> — {event.unlockNoteAuthor.displayName}</Text> : null}
+                  </Text>
+                </View>
+              </Stagger>
+            ) : null}
+
             {collecting ? (
               <Stagger delay={620} style={styles.captureRow}>
                 <View style={{ flex: 1 }}>
@@ -214,11 +314,23 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>{sealed ? "Memories sealed" : "Empty page"}</Text>
+            <Text style={styles.emptyTitle}>
+              {sealed
+                ? "Memories sealed"
+                : disposableHidden
+                  ? "Hidden until reveal"
+                  : geoContentBlocked
+                    ? "Visit to unlock"
+                    : "Empty page"}
+            </Text>
             <Text style={styles.emptyBody}>
               {sealed
                 ? "This capsule will reveal its memories when it unlocks."
-                : "Capture or upload a photo to start filling this capsule."}
+                : disposableHidden
+                  ? "Photos here are taken blind — the capsule reveals them at the end of the collection window."
+                  : geoContentBlocked
+                    ? `${event.locationName ?? "The place"} is ${formatDistance(geoDistance!)} away. Come back when you're closer.`
+                    : "Capture or upload a photo to start filling this capsule."}
             </Text>
           </View>
         }
@@ -254,6 +366,11 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
       />
     </Screen>
   );
+}
+
+function formatDistance(meters: number) {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
 }
 
 function StatusPill({ state }: { state?: CapsuleState }) {
@@ -321,6 +438,28 @@ const styles = StyleSheet.create({
     marginTop: 6
   },
   windowText: { ...type.caption, color: colors.fog, flex: 1 },
+  windowCardDisposable: {
+    borderColor: "rgba(232,194,107,0.40)",
+    backgroundColor: "rgba(232,194,107,0.10)"
+  },
+  windowCardGeoBlocked: {
+    borderColor: "rgba(227,122,106,0.40)",
+    backgroundColor: "rgba(227,122,106,0.10)"
+  },
+  letterPreview: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.fog,
+    marginTop: 6
+  },
+  letterPreviewText: { ...type.caption, color: colors.ink, fontStyle: "italic", flex: 1, lineHeight: 18 },
+  letterPreviewAuthor: { color: colors.mutedDim, fontStyle: "normal" },
   captureRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   capNote: { ...type.micro, color: colors.muted, marginTop: 8, letterSpacing: 1 },
   empty: { paddingVertical: 40, gap: 6, alignItems: "center" },

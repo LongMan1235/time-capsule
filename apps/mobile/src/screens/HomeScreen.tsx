@@ -1,6 +1,7 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
-import { Plus } from "lucide-react-native";
+import { Image } from "expo-image";
+import { CalendarHeart, Plus } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { EventSummary } from "@time-capsule/shared";
@@ -15,6 +16,14 @@ import { colors, radii, type } from "../design/theme";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useSessionStore } from "../store/session";
 
+interface OnThisDayMemory {
+  id: string;
+  title: string;
+  locationName?: string | null;
+  coverUrl?: string | null;
+  yearsAgo: number;
+}
+
 type Filter = "all" | "locked" | "open" | "draft";
 
 const filterOptions: Array<FilterOption<Filter>> = [
@@ -27,6 +36,7 @@ const filterOptions: Array<FilterOption<Filter>> = [
 export function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [events, setEvents] = useState<EventSummary[]>([]);
+  const [onThisDay, setOnThisDay] = useState<OnThisDayMemory[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -37,8 +47,12 @@ export function HomeScreen() {
   async function load() {
     setRefreshing(true);
     try {
-      const response = await api<{ events: EventSummary[] }>("/events");
-      setEvents(response.events);
+      const [eventsResponse, onThisDayResponse] = await Promise.all([
+        api<{ events: EventSummary[] }>("/events"),
+        api<{ memories: OnThisDayMemory[] }>("/memories/on-this-day").catch(() => ({ memories: [] }))
+      ]);
+      setEvents(eventsResponse.events);
+      setOnThisDay(onThisDayResponse.memories ?? []);
     } catch {
       // empty state will show
     } finally {
@@ -92,6 +106,31 @@ export function HomeScreen() {
                 <Plus color={colors.fog} size={16} />
               </AnimatedPressable>
             </View>
+
+            {onThisDay.length > 0 ? (
+              <Stagger delay={120} style={{ marginBottom: 16 }}>
+                <AnimatedPressable
+                  onPress={() => navigation.navigate("EventDetail", { eventId: onThisDay[0].id })}
+                  style={styles.onThisDay}
+                >
+                  {onThisDay[0].coverUrl ? (
+                    <Image source={{ uri: onThisDay[0].coverUrl }} style={styles.onThisDayCover} contentFit="cover" transition={300} />
+                  ) : (
+                    <View style={styles.onThisDayCover} />
+                  )}
+                  <View style={styles.onThisDayBody}>
+                    <View style={styles.onThisDayHeader}>
+                      <CalendarHeart color={colors.gold} size={12} />
+                      <Text style={styles.onThisDayEyebrow}>ON THIS DAY · {onThisDay[0].yearsAgo} YR{onThisDay[0].yearsAgo === 1 ? "" : "S"} AGO</Text>
+                    </View>
+                    <Text style={styles.onThisDayTitle} numberOfLines={1}>{onThisDay[0].title}</Text>
+                    {onThisDay[0].locationName ? (
+                      <Text style={styles.onThisDayMeta}>{onThisDay[0].locationName}</Text>
+                    ) : null}
+                  </View>
+                </AnimatedPressable>
+              </Stagger>
+            ) : null}
 
             <Stagger delay={140} style={styles.filterRow}>
               <FilterChips
@@ -160,6 +199,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card
   },
   filterRow: { marginBottom: 20 },
+  onThisDay: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 8,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: "rgba(232,194,107,0.30)",
+    backgroundColor: "rgba(232,194,107,0.06)"
+  },
+  onThisDayCover: { width: 56, height: 56, borderRadius: radii.md, backgroundColor: colors.dusk },
+  onThisDayBody: { flex: 1, gap: 4 },
+  onThisDayHeader: { flexDirection: "row", alignItems: "center", gap: 5 },
+  onThisDayEyebrow: { ...type.micro, color: colors.gold, letterSpacing: 1.4 },
+  onThisDayTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
+  onThisDayMeta: { ...type.caption, color: colors.muted },
   empty: { alignItems: "center", gap: 12, paddingVertical: 60, paddingHorizontal: 12 },
   emptyTitle: { ...type.title, color: colors.fog, textAlign: "center" },
   emptyBody: { ...type.body, color: colors.muted, textAlign: "center" }

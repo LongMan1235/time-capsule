@@ -79,6 +79,11 @@ export interface DemoEvent extends Omit<EventSummary, "state" | "mediaCount"> {
   description?: string;
   earlyUnlockedAt?: string | null;
   mediaCapPerUser?: number | null;
+  unlockNote?: string | null;
+  unlockNoteAuthorId?: string | null;
+  disposableMode?: boolean;
+  geoLockRadiusMeters?: number | null;
+  ceremonySeenAt?: string | null;
 }
 
 function daysFromNow(days: number) {
@@ -118,6 +123,11 @@ export const seedEvents: DemoEvent[] = [
     contributorScope: "FRIENDS" as ContributorScope,
     mediaCap: null,
     mediaCapPerUser: 10,
+    unlockNote: "If we ever forget how alive we were that summer, this is the proof.",
+    unlockNoteAuthorId: "user-rithik",
+    disposableMode: false,
+    geoLockRadiusMeters: null,
+    ceremonySeenAt: null,
     createdAt: daysAgo(120)
   },
   {
@@ -152,6 +162,10 @@ export const seedEvents: DemoEvent[] = [
     contributorScope: "OPEN_LINK" as ContributorScope,
     mediaCap: 60,
     mediaCapPerUser: 5,
+    unlockNote: null,
+    disposableMode: true,
+    geoLockRadiusMeters: null,
+    ceremonySeenAt: null,
     createdAt: daysAgo(8)
   },
   {
@@ -170,6 +184,10 @@ export const seedEvents: DemoEvent[] = [
     contributorScope: "FRIENDS" as ContributorScope,
     mediaCap: null,
     mediaCapPerUser: null,
+    unlockNote: "If you're reading this, the season's already changed. Hope you're still chasing first chair.",
+    unlockNoteAuthorId: "user-rithik",
+    disposableMode: false,
+    ceremonySeenAt: null,
     createdAt: daysAgo(380)
   },
   {
@@ -188,6 +206,10 @@ export const seedEvents: DemoEvent[] = [
     contributorScope: "OWNER_ONLY" as ContributorScope,
     mediaCap: null,
     mediaCapPerUser: null,
+    unlockNote: "Future me — remember the first week before you got cynical. The world felt enormous.",
+    unlockNoteAuthorId: "user-rithik",
+    disposableMode: false,
+    ceremonySeenAt: null,
     createdAt: daysAgo(640)
   },
   {
@@ -347,6 +369,11 @@ export function toEventSummary(event: DemoEvent, media: Record<string, DemoMedia
     contributorScope: event.contributorScope,
     mediaCount: computeMediaCount(event.id, media),
     mediaCap: event.mediaCap ?? null,
-    mediaCapPerUser: event.mediaCapPerUser ?? null
+    mediaCapPerUser: event.mediaCapPerUser ?? null,
+    unlockNote: event.unlockNote ?? null,
+    unlockNoteAuthor: event.unlockNoteAuthorId ?? null,
+    disposableMode: event.disposableMode ?? false,
+    geoLockRadiusMeters: event.geoLockRadiusMeters ?? null,
+    ceremonySeenAt: event.ceremonySeenAt ?? null
   };
 }

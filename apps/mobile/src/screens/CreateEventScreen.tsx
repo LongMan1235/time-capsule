@@ -1,7 +1,8 @@
 import { useNavigation } from "@react-navigation/native";
-import { CalendarClock, Camera, Globe, Heading2, Hourglass, MapPin, User, Users, X } from "lucide-react-native";
+import * as Location from "expo-location";
+import { CalendarClock, Camera, EyeOff, Globe, Heading2, Hourglass, Lock, Mail, MapPin, Navigation, User, Users, X } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ContributorScope } from "@time-capsule/shared";
 import { api } from "../api/client";
@@ -56,10 +57,35 @@ export function CreateEventScreen() {
   const [contributorScope, setContributorScope] = useState<ContributorScope>("OWNER_ONLY");
   const [mediaCap, setMediaCap] = useState<number | null>(null);
   const [mediaCapPerUser, setMediaCapPerUser] = useState<number | null>(10);
+  const [unlockNote, setUnlockNote] = useState("");
+  const [disposableMode, setDisposableMode] = useState(false);
+  const [geoLockEnabled, setGeoLockEnabled] = useState(false);
+  const [geoCoords, setGeoCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoLockRadiusMeters, setGeoLockRadiusMeters] = useState(200);
   const [saving, setSaving] = useState(false);
 
   const collectionClosesAt = useMemo(() => isoFromHours(collectionHours), [collectionHours]);
   const unlockAt = useMemo(() => isoFromDays(unlockDays + Math.ceil(collectionHours / 24)), [unlockDays, collectionHours]);
+
+  async function captureLocation() {
+    try {
+      setGeoLoading(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Location needed", "Allow location to anchor this capsule to a place.");
+        setGeoLockEnabled(false);
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({});
+      setGeoCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+    } catch (error) {
+      Alert.alert("Could not get location", error instanceof Error ? error.message : "Try again.");
+      setGeoLockEnabled(false);
+    } finally {
+      setGeoLoading(false);
+    }
+  }
 
   async function create() {
     if (!title.trim()) {
@@ -80,7 +106,12 @@ export function CreateEventScreen() {
           visibility: contributorScope === "OPEN_LINK" ? "COLLABORATIVE" : contributorScope === "FRIENDS" ? "FRIENDS" : "PRIVATE",
           contributorScope,
           mediaCap,
-          mediaCapPerUser: contributorScope === "OWNER_ONLY" ? null : mediaCapPerUser
+          mediaCapPerUser: contributorScope === "OWNER_ONLY" ? null : mediaCapPerUser,
+          unlockNote: unlockNote.trim() ? unlockNote.trim() : null,
+          disposableMode,
+          geoLockRadiusMeters: geoLockEnabled && geoCoords ? geoLockRadiusMeters : null,
+          latitude: geoLockEnabled && geoCoords ? geoCoords.latitude : undefined,
+          longitude: geoLockEnabled && geoCoords ? geoCoords.longitude : undefined
         })
       });
       navigation.goBack();
@@ -248,8 +279,89 @@ export function CreateEventScreen() {
             </Stagger>
           ) : null}
 
+          <Stagger delay={720}>
+            <SettingsBlock Icon={Mail} title="Letter to future-you">
+              <TextInput
+                value={unlockNote}
+                onChangeText={setUnlockNote}
+                placeholder="Write a note that only appears when the capsule opens…"
+                placeholderTextColor={colors.mutedDim}
+                multiline
+                style={styles.letterInput}
+                selectionColor={colors.gold}
+              />
+              <Text style={styles.helperText}>Sealed with the capsule. Revealed only at unlock.</Text>
+            </SettingsBlock>
+          </Stagger>
+
           <Stagger delay={760}>
-            <PrimaryButton onPress={create} loading={saving}>
+            <View style={styles.block}>
+              <View style={styles.toggleRow}>
+                <View style={styles.blockHeadInner}>
+                  <EyeOff color={colors.muted} size={14} />
+                  <View>
+                    <Text style={styles.blockTitle}>Disposable mode</Text>
+                    <Text style={styles.helperText}>Photos can be added but not viewed until the window closes.</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={disposableMode}
+                  onValueChange={setDisposableMode}
+                  trackColor={{ false: "rgba(255,255,255,0.10)", true: colors.gold }}
+                  thumbColor={colors.fog}
+                />
+              </View>
+            </View>
+          </Stagger>
+
+          <Stagger delay={800}>
+            <View style={styles.block}>
+              <View style={styles.toggleRow}>
+                <View style={styles.blockHeadInner}>
+                  <Navigation color={colors.muted} size={14} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.blockTitle}>Geo-lock</Text>
+                    <Text style={styles.helperText}>
+                      {geoCoords
+                        ? `Locked to ${geoCoords.latitude.toFixed(3)}°, ${geoCoords.longitude.toFixed(3)}°`
+                        : "Capsule only opens when you're physically here."}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={geoLockEnabled}
+                  onValueChange={(value) => {
+                    setGeoLockEnabled(value);
+                    if (value && !geoCoords) captureLocation();
+                  }}
+                  trackColor={{ false: "rgba(255,255,255,0.10)", true: colors.gold }}
+                  thumbColor={colors.fog}
+                  disabled={geoLoading}
+                />
+              </View>
+              {geoLockEnabled ? (
+                <View style={styles.chipRow}>
+                  {[100, 200, 500, 1000].map((radius) => {
+                    const active = radius === geoLockRadiusMeters;
+                    return (
+                      <AnimatedPressable
+                        key={radius}
+                        onPress={() => setGeoLockRadiusMeters(radius)}
+                        style={[styles.chip, active ? styles.chipActive : null]}
+                      >
+                        <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]}>
+                          {radius < 1000 ? `${radius}m` : "1km"}
+                        </Text>
+                      </AnimatedPressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
+          </Stagger>
+
+          <Stagger delay={860}>
+            <PrimaryButton onPress={create} loading={saving} icon={Lock}>
               Open collection
             </PrimaryButton>
           </Stagger>
@@ -321,6 +433,20 @@ const styles = StyleSheet.create({
     ...type.body,
     textAlignVertical: "top"
   },
+  letterInput: {
+    minHeight: 90,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card,
+    color: colors.fog,
+    ...type.body,
+    fontStyle: "italic",
+    textAlignVertical: "top"
+  },
+  toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   block: {
     borderRadius: radii.lg,
     borderWidth: 1,
