@@ -6,6 +6,7 @@ import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ContributorScope } from "@time-capsule/shared";
 import { api } from "../api/client";
+import { capsuleTemplates } from "../api/capsuleTemplates";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { Screen } from "../components/Screen";
@@ -63,7 +64,23 @@ export function CreateEventScreen() {
   const [geoCoords, setGeoCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoLockRadiusMeters, setGeoLockRadiusMeters] = useState(200);
+  const [templateId, setTemplateId] = useState("blank");
+  const [isPublic, setIsPublic] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  function applyTemplate(id: string) {
+    setTemplateId(id);
+    const template = capsuleTemplates.find((t) => t.id === id);
+    if (!template) return;
+    if (template.defaultTitle) setTitle(template.defaultTitle);
+    setUnlockDays(template.unlockDays);
+    setCollectionHours(template.collectionHours);
+    setContributorScope(template.contributorScope);
+    setMediaCap(template.mediaCap);
+    setMediaCapPerUser(template.mediaCapPerUser);
+    setDisposableMode(template.disposableMode);
+    setUnlockNote(template.promptUnlockNote);
+  }
 
   const collectionClosesAt = useMemo(() => isoFromHours(collectionHours), [collectionHours]);
   const unlockAt = useMemo(() => isoFromDays(unlockDays + Math.ceil(collectionHours / 24)), [unlockDays, collectionHours]);
@@ -111,7 +128,9 @@ export function CreateEventScreen() {
           disposableMode,
           geoLockRadiusMeters: geoLockEnabled && geoCoords ? geoLockRadiusMeters : null,
           latitude: geoLockEnabled && geoCoords ? geoCoords.latitude : undefined,
-          longitude: geoLockEnabled && geoCoords ? geoCoords.longitude : undefined
+          longitude: geoLockEnabled && geoCoords ? geoCoords.longitude : undefined,
+          isPublic,
+          templateId
         })
       });
       navigation.goBack();
@@ -135,6 +154,25 @@ export function CreateEventScreen() {
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]} keyboardShouldPersistTaps="handled">
           <Stagger delay={80}>
             <Text style={styles.title}>Start a new page.</Text>
+          </Stagger>
+
+          <Stagger delay={140}>
+            <Text style={styles.sectionEyebrow}>TEMPLATE</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateRow}>
+              {capsuleTemplates.map((template) => {
+                const active = template.id === templateId;
+                return (
+                  <AnimatedPressable
+                    key={template.id}
+                    onPress={() => applyTemplate(template.id)}
+                    style={[styles.templateCard, active ? styles.templateCardActive : null]}
+                  >
+                    <Text style={[styles.templateTitle, active ? styles.templateTitleActive : null]}>{template.title}</Text>
+                    <Text style={styles.templateBody} numberOfLines={2}>{template.description}</Text>
+                  </AnimatedPressable>
+                );
+              })}
+            </ScrollView>
           </Stagger>
 
           <Stagger delay={200} style={styles.fields}>
@@ -360,7 +398,29 @@ export function CreateEventScreen() {
             </View>
           </Stagger>
 
-          <Stagger delay={860}>
+          <Stagger delay={830}>
+            <View style={styles.block}>
+              <View style={styles.toggleRow}>
+                <View style={styles.blockHeadInner}>
+                  <Globe color={colors.muted} size={14} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.blockTitle}>Public memorial</Text>
+                    <Text style={styles.helperText}>
+                      Anyone with the share link can view this capsule (read-only). Good for weddings, eulogies, big public moments.
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={isPublic}
+                  onValueChange={setIsPublic}
+                  trackColor={{ false: "rgba(255,255,255,0.10)", true: colors.gold }}
+                  thumbColor={colors.fog}
+                />
+              </View>
+            </View>
+          </Stagger>
+
+          <Stagger delay={880}>
             <PrimaryButton onPress={create} loading={saving} icon={Lock}>
               Open collection
             </PrimaryButton>
@@ -447,6 +507,21 @@ const styles = StyleSheet.create({
     textAlignVertical: "top"
   },
   toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  sectionEyebrow: { ...type.micro, color: colors.muted, marginBottom: 8 },
+  templateRow: { flexDirection: "row", gap: 10, paddingRight: 24 },
+  templateCard: {
+    width: 200,
+    padding: 14,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card,
+    gap: 4
+  },
+  templateCardActive: { borderColor: colors.gold, backgroundColor: "rgba(232,194,107,0.08)" },
+  templateTitle: { ...type.subtitle, color: colors.fog, fontWeight: "700" },
+  templateTitleActive: { color: colors.gold },
+  templateBody: { ...type.caption, color: colors.muted },
   block: {
     borderRadius: radii.lg,
     borderWidth: 1,

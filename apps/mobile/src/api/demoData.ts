@@ -84,6 +84,8 @@ export interface DemoEvent extends Omit<EventSummary, "state" | "mediaCount"> {
   disposableMode?: boolean;
   geoLockRadiusMeters?: number | null;
   ceremonySeenAt?: string | null;
+  isPublic?: boolean;
+  templateId?: string | null;
 }
 
 function daysFromNow(days: number) {
@@ -128,6 +130,8 @@ export const seedEvents: DemoEvent[] = [
     disposableMode: false,
     geoLockRadiusMeters: null,
     ceremonySeenAt: null,
+    isPublic: false,
+    templateId: "trip",
     createdAt: daysAgo(120)
   },
   {
@@ -374,6 +378,8 @@ export function toEventSummary(event: DemoEvent, media: Record<string, DemoMedia
     unlockNoteAuthor: event.unlockNoteAuthorId ?? null,
     disposableMode: event.disposableMode ?? false,
     geoLockRadiusMeters: event.geoLockRadiusMeters ?? null,
-    ceremonySeenAt: event.ceremonySeenAt ?? null
+    ceremonySeenAt: event.ceremonySeenAt ?? null,
+    isPublic: event.isPublic ?? false,
+    templateId: event.templateId ?? null
   };
 }

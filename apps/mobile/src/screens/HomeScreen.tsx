@@ -1,7 +1,7 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { Image } from "expo-image";
-import { CalendarHeart, Plus } from "lucide-react-native";
+import { CalendarHeart, Compass, Plus } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { EventSummary } from "@time-capsule/shared";
@@ -14,6 +14,7 @@ import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
 import { colors, radii, type } from "../design/theme";
 import type { RootStackParamList } from "../navigation/RootNavigator";
+import { hasSeenPersonalize } from "./PersonalizeScreen";
 import { useSessionStore } from "../store/session";
 
 interface OnThisDayMemory {
@@ -63,6 +64,17 @@ export function HomeScreen() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const seen = await hasSeenPersonalize();
+      if (!seen && !cancelled) navigation.navigate("Personalize");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigation]);
 
   const counts = useMemo(() => ({
     all: events.length,
@@ -138,6 +150,13 @@ export function HomeScreen() {
                 value={filter}
                 onChange={setFilter}
               />
+            </Stagger>
+
+            <Stagger delay={180} style={{ marginBottom: 16 }}>
+              <AnimatedPressable onPress={() => navigation.navigate("Explore")} style={styles.exploreRow}>
+                <Compass color={colors.muted} size={14} />
+                <Text style={styles.exploreText}>Explore public capsules</Text>
+              </AnimatedPressable>
             </Stagger>
           </Animated.View>
         }
@@ -215,6 +234,19 @@ const styles = StyleSheet.create({
   onThisDayEyebrow: { ...type.micro, color: colors.gold, letterSpacing: 1.4 },
   onThisDayTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
   onThisDayMeta: { ...type.caption, color: colors.muted },
+  exploreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card
+  },
+  exploreText: { ...type.caption, color: colors.muted, fontWeight: "600" },
   empty: { alignItems: "center", gap: 12, paddingVertical: 60, paddingHorizontal: 12 },
   emptyTitle: { ...type.title, color: colors.fog, textAlign: "center" },
   emptyBody: { ...type.body, color: colors.muted, textAlign: "center" }

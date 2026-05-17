@@ -235,6 +235,8 @@ interface CreateEventBody {
   unlockNote?: string | null;
   disposableMode?: boolean;
   geoLockRadiusMeters?: number | null;
+  isPublic?: boolean;
+  templateId?: string | null;
 }
 
 interface SearchBody {
@@ -366,6 +368,8 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
       disposableMode: body.disposableMode ?? false,
       geoLockRadiusMeters: body.geoLockRadiusMeters ?? null,
       ceremonySeenAt: null,
+      isPublic: body.isPublic ?? false,
+      templateId: body.templateId ?? null,
       createdAt: new Date().toISOString()
     };
     store.events.unshift(event);
@@ -507,6 +511,19 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     const eventsOwned = store.events.length;
     const memoriesAdded = myMedia.length;
     return { streakWeeks: streak, eventsOwned, memoriesAdded } as T;
+  }
+
+  if (route === "GET /explore/public") {
+    const events: EventSummary[] = store.events
+      .filter((event) => event.isPublic)
+      .map((event) => toEventSummary(event, store.media));
+    // Add a small curated seed of public-feeling capsules for an empty store
+    if (events.length === 0) {
+      events.push(
+        ...store.events.slice(0, 3).map((e) => toEventSummary({ ...e, isPublic: true }, store.media))
+      );
+    }
+    return { events } as T;
   }
 
   if (route === "GET /memories/on-this-day") {

@@ -32,6 +32,8 @@ export interface EventSummary {
   disposableMode?: boolean;
   geoLockRadiusMeters?: number | null;
   ceremonySeenAt?: string | null;
+  isPublic?: boolean;
+  templateId?: string | null;
 }
 
 export interface MediaReaction {

@@ -17,6 +17,8 @@ import { HomeScreen } from "../screens/HomeScreen";
 import { MapScreen } from "../screens/MapScreen";
 import { OnboardingScreen } from "../screens/OnboardingScreen";
 import { PaywallScreen } from "../screens/PaywallScreen";
+import { PersonalizeScreen } from "../screens/PersonalizeScreen";
+import { ExploreScreen } from "../screens/ExploreScreen";
 import { PhotoViewerScreen } from "../screens/PhotoViewerScreen";
 import { PrivacyScreen } from "../screens/PrivacyScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
@@ -34,6 +36,8 @@ export type RootStackParamList = {
   PhotoViewer: { eventId: string; startIndex?: number };
   UnlockCeremony: { eventId: string };
   Profile: undefined;
+  Explore: undefined;
+  Personalize: undefined;
   Paywall: undefined;
 };
 
@@ -146,6 +150,8 @@ export function RootNavigator() {
           <Stack.Screen name="PhotoViewer" component={PhotoViewerScreen} options={{ animation: "fade" }} />
           <Stack.Screen name="UnlockCeremony" component={UnlockCeremonyScreen} options={{ animation: "fade", presentation: "modal" }} />
           <Stack.Screen name="Profile" component={ProfileScreen} options={{ animation: "slide_from_right" }} />
+          <Stack.Screen name="Explore" component={ExploreScreen} options={{ animation: "slide_from_right" }} />
+          <Stack.Screen name="Personalize" component={PersonalizeScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
           <Stack.Screen name="Paywall" component={PaywallScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
         </>
       ) : (
