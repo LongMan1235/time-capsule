@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { ArrowLeft, ChevronRight, Flame, Gift, ImageIcon, Lock, Pencil, Users } from "lucide-react-native";
+import { ArrowLeft, Bell, ChevronRight, Flame, Gift, ImageIcon, Lock, Pencil, Users } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
@@ -133,6 +133,8 @@ export function ProfileScreen() {
             <ProfileMenuRow Icon={ImageIcon} title="Friend feed" onPress={() => navigation.navigate("FriendFeed")} />
             <Divider />
             <ProfileMenuRow Icon={Gift} title="Gift a capsule" onPress={() => navigation.navigate("GiftCapsule")} />
+            <Divider />
+            <ProfileMenuRow Icon={Bell} title="Notifications" onPress={() => navigation.navigate("Notifications")} />
           </View>
         </Stagger>
       </ScrollView>

@@ -561,6 +561,34 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     return { events } as T;
   }
 
+  if (route === "GET /anniversaries") {
+    const now = new Date();
+    const items: Array<{ id: string; title: string; coverUrl?: string | null; sealedAgoDays: number; unlocksInDays: number; unlockAt: string }> = [];
+    for (const event of store.events) {
+      if (!event.unlockAt) continue;
+      const unlock = new Date(event.unlockAt);
+      const diffDays = Math.floor((unlock.getTime() - now.getTime()) / 86_400_000);
+      const sealedAgo = event.collectionClosesAt
+        ? Math.floor((now.getTime() - new Date(event.collectionClosesAt).getTime()) / 86_400_000)
+        : 0;
+      // Surface anniversaries on the 7 days leading up to unlock, or every 30 days while waiting
+      const isClose = diffDays >= 0 && diffDays <= 7;
+      const isMonthly = sealedAgo > 0 && sealedAgo % 30 < 2;
+      if (isClose || isMonthly) {
+        items.push({
+          id: event.id,
+          title: event.title,
+          coverUrl: event.coverUrl,
+          sealedAgoDays: Math.max(0, sealedAgo),
+          unlocksInDays: Math.max(0, diffDays),
+          unlockAt: event.unlockAt
+        });
+      }
+    }
+    items.sort((a, b) => a.unlocksInDays - b.unlocksInDays);
+    return { items: items.slice(0, 6) } as T;
+  }
+
   if (route === "GET /memories/on-this-day") {
     const now = new Date();
     const matches = store.events
