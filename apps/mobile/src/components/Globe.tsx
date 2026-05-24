@@ -1,6 +1,11 @@
+import { geoCircle, geoGraticule10, geoOrthographic, geoPath } from "d3-geo";
 import { useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, StyleSheet, View } from "react-native";
-import Svg, { Circle, Defs, G, Line, Path, RadialGradient, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, G, Path, RadialGradient, Stop } from "react-native-svg";
+import type { FeatureCollection } from "geojson";
+import { feature } from "topojson-client";
+import worldTopology from "world-atlas/countries-110m.json";
+import type { Topology, GeometryCollection } from "topojson-specification";
 import { colors } from "../design/theme";
 
 export interface GlobePoint {
@@ -16,70 +21,12 @@ interface Props {
   onSelect?: (id: string) => void;
 }
 
-const PARALLELS = [-60, -30, 0, 30, 60];
-const MERIDIANS = [0, 30, 60, 90, 120, 150, 180, -30, -60, -90, -120, -150];
-
-const DEG = Math.PI / 180;
-
-function project(
-  latDeg: number,
-  lngDeg: number,
-  rotLngDeg: number,
-  rotLatDeg: number
-): { x: number; y: number; z: number } {
-  const lat = latDeg * DEG;
-  const lng = (lngDeg - rotLngDeg) * DEG;
-  const rotLat = rotLatDeg * DEG;
-
-  const cosLat = Math.cos(lat);
-  const x = cosLat * Math.sin(lng);
-  const y = Math.sin(lat);
-  const z = cosLat * Math.cos(lng);
-
-  const y2 = y * Math.cos(rotLat) + z * Math.sin(rotLat);
-  const z2 = -y * Math.sin(rotLat) + z * Math.cos(rotLat);
-
-  return { x, y: y2, z: z2 };
-}
-
-function buildParallelPath(latDeg: number, rotLngDeg: number, rotLatDeg: number, radius: number) {
-  const segments: Array<Array<[number, number]>> = [];
-  let current: Array<[number, number]> = [];
-  const steps = 96;
-  for (let i = 0; i <= steps; i += 1) {
-    const lng = -180 + (i / steps) * 360;
-    const { x, y, z } = project(latDeg, lng, rotLngDeg, rotLatDeg);
-    if (z >= 0) {
-      current.push([x * radius, -y * radius]);
-    } else if (current.length) {
-      segments.push(current);
-      current = [];
-    }
-  }
-  if (current.length) segments.push(current);
-  return segments.map((seg) => seg.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`).join(" "));
-}
-
-function buildMeridianPath(lngDeg: number, rotLngDeg: number, rotLatDeg: number, radius: number) {
-  const segments: Array<Array<[number, number]>> = [];
-  let current: Array<[number, number]> = [];
-  const steps = 72;
-  for (let i = 0; i <= steps; i += 1) {
-    const lat = -90 + (i / steps) * 180;
-    const { x, y, z } = project(lat, lngDeg, rotLngDeg, rotLatDeg);
-    if (z >= 0) {
-      current.push([x * radius, -y * radius]);
-    } else if (current.length) {
-      segments.push(current);
-      current = [];
-    }
-  }
-  if (current.length) segments.push(current);
-  return segments.map((seg) => seg.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`).join(" "));
-}
+// world-atlas/countries-110m.json: TopoJSON with `countries` object
+const topology = worldTopology as unknown as Topology<{ countries: GeometryCollection }>;
+const landFeatures = feature(topology, topology.objects.countries) as unknown as FeatureCollection;
 
 export function Globe({ size, points, selectedId, onSelect }: Props) {
-  const radius = size / 2 - 12;
+  const radius = size / 2 - 16;
   const [rotation, setRotation] = useState({ lng: 30, lat: -15 });
   const start = useRef(rotation);
 
@@ -101,70 +48,110 @@ export function Globe({ size, points, selectedId, onSelect }: Props) {
     [radius, rotation]
   );
 
-  const parallels = useMemo(
-    () => PARALLELS.flatMap((lat) => buildParallelPath(lat, rotation.lng, rotation.lat, radius)),
-    [rotation.lng, rotation.lat, radius]
-  );
-  const meridians = useMemo(
-    () => MERIDIANS.flatMap((lng) => buildMeridianPath(lng, rotation.lng, rotation.lat, radius)),
-    [rotation.lng, rotation.lat, radius]
-  );
+  const projection = useMemo(() => {
+    return geoOrthographic()
+      .scale(radius)
+      .translate([0, 0])
+      .rotate([rotation.lng, -rotation.lat])
+      .clipAngle(90);
+  }, [radius, rotation.lng, rotation.lat]);
 
-  const visiblePoints = useMemo(
+  const pathGen = useMemo(() => geoPath(projection), [projection]);
+
+  const landPath = useMemo(() => {
+    return pathGen({ type: "FeatureCollection", features: landFeatures.features } as FeatureCollection) ?? "";
+  }, [pathGen]);
+
+  const graticulePath = useMemo(() => pathGen(geoGraticule10()) ?? "", [pathGen]);
+
+  const spherePath = useMemo(() => pathGen({ type: "Sphere" } as never) ?? "", [pathGen]);
+
+  // For pins: project each lat/lng with d3, drop ones whose path is null (back of sphere)
+  const projectedPins = useMemo(
     () =>
       points
         .map((point) => {
-          const { x, y, z } = project(point.latitude, point.longitude, rotation.lng, rotation.lat);
-          return { ...point, sx: x * radius, sy: -y * radius, visible: z >= 0 };
+          const circle = geoCircle().center([point.longitude, point.latitude]).radius(0.0001)();
+          const visible = pathGen(circle) != null;
+          const coords = projection([point.longitude, point.latitude]);
+          if (!visible || !coords) return null;
+          return { ...point, sx: coords[0], sy: coords[1] };
         })
-        .filter((p) => p.visible),
-    [points, rotation.lng, rotation.lat, radius]
+        .filter((p): p is GlobePoint & { sx: number; sy: number } => p !== null),
+    [points, projection, pathGen]
   );
 
   return (
     <View style={[styles.wrap, { width: size, height: size }]} {...panResponder.panHandlers}>
       <Svg width={size} height={size} viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`}>
         <Defs>
-          <RadialGradient id="globeFill" cx="35%" cy="32%" r="80%">
-            <Stop offset="0%" stopColor="#27212E" stopOpacity="1" />
-            <Stop offset="60%" stopColor="#181420" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#0B0A10" stopOpacity="1" />
+          <RadialGradient id="oceanFill" cx="35%" cy="32%" r="80%">
+            <Stop offset="0%" stopColor="#1B2A3F" stopOpacity="1" />
+            <Stop offset="55%" stopColor="#0E1A2A" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#070C14" stopOpacity="1" />
           </RadialGradient>
           <RadialGradient id="globeRim" cx="50%" cy="50%" r="50%">
             <Stop offset="92%" stopColor={colors.gold} stopOpacity="0" />
-            <Stop offset="100%" stopColor={colors.gold} stopOpacity="0.18" />
+            <Stop offset="100%" stopColor={colors.gold} stopOpacity="0.22" />
+          </RadialGradient>
+          <RadialGradient id="atmosphereGlow" cx="50%" cy="50%" r="52%">
+            <Stop offset="92%" stopColor="#6FB3FF" stopOpacity="0" />
+            <Stop offset="100%" stopColor="#6FB3FF" stopOpacity="0.18" />
           </RadialGradient>
         </Defs>
-        <Circle cx={0} cy={0} r={radius + 4} fill="url(#globeRim)" />
-        <Circle cx={0} cy={0} r={radius} fill="url(#globeFill)" stroke={colors.lineBright} strokeWidth={1} />
+
+        {/* Atmospheric glow ring */}
+        <Circle cx={0} cy={0} r={radius + 6} fill="url(#atmosphereGlow)" />
+        {/* Ocean sphere */}
+        <Path d={spherePath} fill="url(#oceanFill)" stroke={colors.lineBright} strokeWidth={0.75} />
+        {/* Graticule (lat/long lines) over the ocean */}
+        <Path d={graticulePath} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={0.5} />
+        {/* Continents */}
+        <Path
+          d={landPath}
+          fill="#6A8055"
+          stroke="#3F4D34"
+          strokeWidth={0.4}
+          strokeLinejoin="round"
+        />
+        {/* Inner shading (subtle dark overlay on bottom-right) */}
+        <Circle cx={0} cy={0} r={radius} fill="url(#globeRim)" />
+
+        {/* Pole tick marks */}
         <G opacity={0.45}>
-          {parallels.map((d, i) => (
-            <Path key={`p-${i}`} d={d} stroke={colors.line} strokeWidth={0.75} fill="none" />
-          ))}
-          {meridians.map((d, i) => (
-            <Path key={`m-${i}`} d={d} stroke={colors.line} strokeWidth={0.75} fill="none" />
-          ))}
+          {/* North */}
+          {(() => {
+            const np = projection([0, 90]);
+            if (!np) return null;
+            return (
+              <Circle cx={np[0]} cy={np[1]} r={1.6} fill={colors.muted} />
+            );
+          })()}
+          {/* South */}
+          {(() => {
+            const sp = projection([0, -90]);
+            if (!sp) return null;
+            return (
+              <Circle cx={sp[0]} cy={sp[1]} r={1.6} fill={colors.muted} />
+            );
+          })()}
         </G>
-        <Line x1={0} y1={-radius - 6} x2={0} y2={-radius - 12} stroke={colors.muted} strokeWidth={1} />
-        <Line x1={0} y1={radius + 6} x2={0} y2={radius + 12} stroke={colors.muted} strokeWidth={1} />
-        {visiblePoints.map((point) => {
+
+        {/* Pins on top */}
+        {projectedPins.map((point) => {
           const selected = point.id === selectedId;
           return (
             <G key={point.id} onPress={() => onSelect?.(point.id)}>
-              <Circle cx={point.sx} cy={point.sy} r={selected ? 7 : 5} fill={colors.gold} opacity={0.20} />
-              <Circle cx={point.sx} cy={point.sy} r={selected ? 4 : 3} fill={colors.gold} />
+              <Circle cx={point.sx} cy={point.sy} r={selected ? 8 : 6} fill={colors.gold} opacity={0.25} />
+              <Circle cx={point.sx} cy={point.sy} r={selected ? 4.5 : 3.5} fill={colors.gold} stroke={colors.ink} strokeWidth={0.8} />
             </G>
           );
         })}
       </Svg>
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.hint]}>
-        <Animated.View />
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: "center", justifyContent: "center" },
-  hint: { alignItems: "center", justifyContent: "flex-end" }
+  wrap: { alignItems: "center", justifyContent: "center" }
 });
