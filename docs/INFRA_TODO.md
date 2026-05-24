@@ -165,6 +165,47 @@ returns relevant results."
 
 ---
 
+## Forward-compatibility maintenance
+
+These are warnings, not bugs — everything still works on SDK 54 today, but
+they should be addressed before SDK 55 to avoid future breakage.
+
+### expo-av → expo-audio + expo-video
+
+`expo-av` was deprecated in SDK 54 and will be removed in SDK 55. The
+features that use it today (still working):
+
+- `apps/mobile/src/screens/VoiceNoteScreen.tsx` — uses `Audio.Recording`
+  and `Audio.Sound`. Migrate to `expo-audio`'s `useAudioRecorder()` and
+  `useAudioPlayer()` hooks.
+- `apps/mobile/src/screens/PhotoViewerScreen.tsx` — uses `Audio.Sound` for
+  in-thread voice note playback and `Video` from expo-av for video tiles.
+  Migrate audio to `expo-audio`'s `useAudioPlayer()` and video to
+  `expo-video`'s `VideoView` + `useVideoPlayer()`.
+
+```bash
+npx expo install expo-audio expo-video
+npm uninstall expo-av
+```
+
+The new APIs are hook-based — about 1-2 hours of focused refactoring.
+
+### expo-notifications in Expo Go
+
+`expo-notifications` will not schedule pushes inside Expo Go (limitation
+since SDK 53). The current code (`apps/mobile/src/api/notifications.ts`)
+wraps every call in try/catch so it no-ops gracefully in Expo Go.
+
+To get real scheduled notifications, ship a development build:
+
+```bash
+npx expo prebuild
+npx expo run:ios   # or run:android
+```
+
+The user can then toggle the notification preferences and the schedules
+will actually fire.
+
 ## What's deliberately stubbed in this session
 
 Most of the buildable items (1–8, 11–23, 33–34) shipped as working features
