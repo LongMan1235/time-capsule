@@ -14,7 +14,14 @@ export function SegmentedControl<T extends string>({ options, value, onChange }:
   const index = options.findIndex((option) => option.value === value);
 
   useEffect(() => {
-    Animated.spring(indicator, { toValue: Math.max(0, index), useNativeDriver: false, friction: 8, tension: 130 }).start();
+    Animated.spring(indicator, {
+      toValue: Math.max(0, index),
+      useNativeDriver: false,
+      friction: 9,
+      tension: 160,
+      restSpeedThreshold: 0.001,
+      restDisplacementThreshold: 0.001
+    }).start();
   }, [indicator, index]);
 
   const onLayout = (event: LayoutChangeEvent) => {

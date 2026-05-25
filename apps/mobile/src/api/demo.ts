@@ -795,6 +795,22 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     return { items: items.slice(0, 30) } as T;
   }
 
+  const inviteMatch = path.match(/^\/events\/([^/]+)\/invite$/);
+  if (method === "POST" && inviteMatch) {
+    const eventId = inviteMatch[1];
+    const body = parseBody<{ userIds: string[] }>(options);
+    const event = store.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    if (!body?.userIds?.length) return { ok: true, invited: 0 } as T;
+    const invited = body.userIds.filter((id) => store.users.some((u) => u.id === id));
+    // Track invitees on the event so we can show them on EventDetail later
+    (event as DemoEvent & { inviteeIds?: string[] }).inviteeIds = Array.from(
+      new Set([...((event as DemoEvent & { inviteeIds?: string[] }).inviteeIds ?? []), ...invited])
+    );
+    await persist();
+    return { ok: true, invited: invited.length } as T;
+  }
+
   const shareMatch = path.match(/^\/events\/([^/]+)\/share$/);
   if (method === "POST" && shareMatch) {
     const eventId = shareMatch[1];

@@ -3,11 +3,11 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Linking from "expo-linking";
 import * as Location from "expo-location";
-import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Mic, Music2, Navigation, Play, ScrollText, Share2 } from "lucide-react-native";
+import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Mic, Music2, Navigation, Play, ScrollText, Share2, UserPlus } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Dimensions, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { CapsuleState, MediaDetail } from "@time-capsule/shared";
+import type { CapsuleState, ContributorScope, MediaDetail } from "@time-capsule/shared";
 import { api } from "../api/client";
 import { pickAndUploadMedia } from "../api/uploads";
 import { AnimatedPressable } from "../components/AnimatedPressable";
@@ -30,6 +30,7 @@ interface EventDetail {
   unlockAt?: string | null;
   collectionClosesAt?: string | null;
   state?: CapsuleState;
+  contributorScope?: ContributorScope;
   mediaCap?: number | null;
   mediaCapPerUser?: number | null;
   mediaCountForMe?: number;
@@ -202,9 +203,19 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
         <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft color={colors.fog} size={20} />
         </AnimatedPressable>
-        <AnimatedPressable onPress={shareCapsule} style={styles.backButton}>
-          <Share2 color={colors.fog} size={18} />
-        </AnimatedPressable>
+        <View style={styles.topRight}>
+          {event.contributorScope && event.contributorScope !== "OWNER_ONLY" ? (
+            <AnimatedPressable
+              onPress={() => navigation.navigate("InviteFriends", { eventId: event.id, title: event.title, openOnDone: false })}
+              style={styles.backButton}
+            >
+              <UserPlus color={colors.fog} size={18} />
+            </AnimatedPressable>
+          ) : null}
+          <AnimatedPressable onPress={shareCapsule} style={styles.backButton}>
+            <Share2 color={colors.fog} size={18} />
+          </AnimatedPressable>
+        </View>
       </View>
 
       <Animated.FlatList
@@ -452,7 +463,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   error: { ...type.subtitle, color: colors.fog },
   hero: { position: "absolute", top: 0, left: 0, right: 0, height: HERO_HEIGHT, overflow: "hidden" },
-  topBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", justifyContent: "space-between" },
+  topBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  topRight: { flexDirection: "row", gap: 8 },
   backButton: {
     width: 40,
     height: 40,

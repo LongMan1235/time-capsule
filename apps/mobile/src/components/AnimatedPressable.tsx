@@ -1,6 +1,7 @@
 import { forwardRef, useRef, type ReactNode } from "react";
 import {
   Animated,
+  Easing,
   Pressable,
   type PressableProps,
   type StyleProp,
@@ -16,7 +17,7 @@ interface Props extends Omit<PressableProps, "children" | "style"> {
 }
 
 export const AnimatedPressable = forwardRef<any, Props>(function AnimatedPressable(
-  { children, style, scaleTo = 0.96, pressOpacity = 0.92, duration = 130, onPressIn, onPressOut, ...rest },
+  { children, style, scaleTo = 0.965, pressOpacity = 0.92, duration = 110, onPressIn, onPressOut, ...rest },
   ref
 ) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -27,15 +28,20 @@ export const AnimatedPressable = forwardRef<any, Props>(function AnimatedPressab
       ref={ref}
       onPressIn={(event) => {
         Animated.parallel([
-          Animated.timing(scale, { toValue: scaleTo, duration, useNativeDriver: true }),
+          Animated.timing(scale, {
+            toValue: scaleTo,
+            duration,
+            easing: Easing.bezier(0.32, 0.72, 0.36, 0.94),
+            useNativeDriver: true
+          }),
           Animated.timing(opacity, { toValue: pressOpacity, duration, useNativeDriver: true })
         ]).start();
         onPressIn?.(event);
       }}
       onPressOut={(event) => {
         Animated.parallel([
-          Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 240, friction: 8 }),
-          Animated.timing(opacity, { toValue: 1, duration, useNativeDriver: true })
+          Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 240, friction: 7, restSpeedThreshold: 0.001 }),
+          Animated.timing(opacity, { toValue: 1, duration: duration + 40, useNativeDriver: true })
         ]).start();
         onPressOut?.(event);
       }}

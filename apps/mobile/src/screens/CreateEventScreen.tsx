@@ -1,4 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../navigation/RootNavigator";
 import * as Location from "expo-location";
 import { CalendarClock, Camera, EyeOff, Globe, Heading2, Hourglass, Lock, Mail, MapPin, Music2, Navigation, User, Users, X } from "lucide-react-native";
 import { useMemo, useState } from "react";
@@ -55,7 +57,7 @@ function extractSpotifyTitle(url: string) {
 }
 
 export function CreateEventScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -119,7 +121,7 @@ export function CreateEventScreen() {
     }
     setSaving(true);
     try {
-      await api("/events", {
+      const response = await api<{ event: { id: string; title: string } }>("/events", {
         method: "POST",
         body: JSON.stringify({
           title,
@@ -143,7 +145,11 @@ export function CreateEventScreen() {
           spotifyTitle: spotifyUri.trim() ? extractSpotifyTitle(spotifyUri.trim()) : null
         })
       });
-      navigation.goBack();
+      if (contributorScope !== "OWNER_ONLY") {
+        navigation.replace("InviteFriends", { eventId: response.event.id, title: response.event.title });
+      } else {
+        navigation.replace("EventDetail", { eventId: response.event.id });
+      }
     } catch (error) {
       Alert.alert("Could not create capsule", error instanceof Error ? error.message : "Try again.");
     } finally {
