@@ -21,6 +21,7 @@ import { PersonalizeScreen } from "../screens/PersonalizeScreen";
 import { ExploreScreen } from "../screens/ExploreScreen";
 import { FriendFeedScreen } from "../screens/FriendFeedScreen";
 import { FriendsScreen } from "../screens/FriendsScreen";
+import { EventRecapScreen } from "../screens/EventRecapScreen";
 import { GiftCapsuleScreen } from "../screens/GiftCapsuleScreen";
 import { InviteFriendsScreen } from "../screens/InviteFriendsScreen";
 import { PhotoViewerScreen } from "../screens/PhotoViewerScreen";
@@ -50,6 +51,7 @@ export type RootStackParamList = {
   FriendFeed: undefined;
   GiftCapsule: undefined;
   InviteFriends: { eventId: string; title: string; openOnDone?: boolean };
+  EventRecap: { eventId: string; title: string };
   RecapReel: { year: number };
   Notifications: undefined;
   Paywall: undefined;
@@ -170,6 +172,7 @@ export function RootNavigator() {
           <Stack.Screen name="FriendFeed" component={FriendFeedScreen} options={{ animation: "slide_from_right" }} />
           <Stack.Screen name="GiftCapsule" component={GiftCapsuleScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
           <Stack.Screen name="InviteFriends" component={InviteFriendsScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />
+          <Stack.Screen name="EventRecap" component={EventRecapScreen} options={{ animation: "fade", presentation: "modal" }} />
           <Stack.Screen name="RecapReel" component={RecapReelScreen} options={{ animation: "fade", presentation: "modal" }} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: "slide_from_right" }} />
           <Stack.Screen name="Personalize" component={PersonalizeScreen} options={{ animation: "slide_from_bottom", presentation: "modal" }} />

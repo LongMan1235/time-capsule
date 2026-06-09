@@ -487,6 +487,100 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     return { ok: true } as T;
   }
 
+  const summaryMatch = path.match(/^\/events\/([^/]+)\/summary$/);
+  if (method === "GET" && summaryMatch) {
+    const eventId = summaryMatch[1];
+    const event = store.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    const list = store.media[eventId] ?? [];
+
+    const captions = list.map((m) => m.caption).filter((c): c is string => !!c);
+    const contributorIds = Array.from(new Set(list.map((m) => m.addedByUserId)));
+    const contributors = contributorIds
+      .map((id) => store.users.find((u) => u.id === id))
+      .filter((u): u is DemoUser => !!u);
+
+    const times = list
+      .map((m) => (m.capturedAt ? new Date(m.capturedAt).getTime() : NaN))
+      .filter((t) => !Number.isNaN(t))
+      .sort((a, b) => a - b);
+    const daysSpan = times.length > 1
+      ? Math.max(1, Math.ceil((times[times.length - 1] - times[0]) / 86_400_000))
+      : 1;
+
+    let totalReactions = 0;
+    const reactionTally: Record<string, number> = {};
+    for (const m of list) {
+      const rx = store.reactions[m.id] ?? [];
+      totalReactions += rx.length;
+      for (const r of rx) reactionTally[r.emoji] = (reactionTally[r.emoji] ?? 0) + 1;
+    }
+    const topEmoji = Object.entries(reactionTally).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    const totalComments = Object.entries(store.comments).reduce(
+      (sum, [mediaId, list]) => sum + (list.length && (store.media[eventId] ?? []).some((m) => m.id === mediaId) ? list.length : 0),
+      0
+    );
+
+    const highlights = [...list]
+      .map((m) => ({
+        media: m,
+        score: (store.reactions[m.id]?.length ?? 0) * 2 + (store.comments[m.id]?.length ?? 0)
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map(({ media }) => ({
+        id: media.id,
+        url: media.url,
+        caption: media.caption ?? null,
+        kind: media.kind
+      }));
+
+    const contributorPhrase = contributors.length === 0
+      ? "you"
+      : contributors.length === 1
+        ? contributors[0].displayName
+        : contributors.length === 2
+          ? `${contributors[0].displayName} and ${contributors[1].displayName}`
+          : `${contributors[0].displayName}, ${contributors[1].displayName}, and ${contributors.length - 2} more`;
+
+    const captionPhrase = captions.length > 0
+      ? `“${captions[Math.floor(captions.length / 2)]}” kept finding its way back into the camera.`
+      : "Quiet, photographic moments — captions came later, in the head, not on the screen.";
+
+    const locationPhrase = event.locationName ? `Anchored in ${event.locationName}.` : "Carried across more than one place.";
+
+    const sealedPhrase = event.collectionClosesAt
+      ? `Sealed ${formatRelativeMonth(event.collectionClosesAt)}.`
+      : "Still collecting.";
+
+    const unlockPhrase = event.unlockAt
+      ? new Date(event.unlockAt).getTime() <= Date.now()
+        ? "Open today."
+        : `Opens ${formatRelativeMonth(event.unlockAt)}.`
+      : "Open whenever you decide.";
+
+    const paragraphs = [
+      `${event.title} lives in ${list.length} ${list.length === 1 ? "memory" : "memories"} across ${daysSpan} ${daysSpan === 1 ? "day" : "days"}, captured by ${contributorPhrase}.`,
+      captionPhrase,
+      `${locationPhrase} ${sealedPhrase} ${unlockPhrase}`
+    ];
+
+    return {
+      paragraphs,
+      stats: {
+        memories: list.length,
+        contributors: Math.max(1, contributors.length),
+        daysSpan,
+        reactions: totalReactions,
+        comments: totalComments
+      },
+      topEmoji: topEmoji ?? null,
+      highlights,
+      generatedAt: new Date().toISOString()
+    } as T;
+  }
+
   const ceremonyMatch = path.match(/^\/events\/([^/]+)\/ceremony-seen$/);
   if (method === "POST" && ceremonyMatch) {
     const eventId = ceremonyMatch[1];
@@ -857,6 +951,12 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
   }
 
   throw new Error(`No demo handler for ${route}`);
+}
+
+function formatRelativeMonth(iso: string) {
+  const date = new Date(iso);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 function ensureGuestUser(identifier: string): DemoUser {

@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Linking from "expo-linking";
 import * as Location from "expo-location";
-import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Mic, Music2, Navigation, Play, ScrollText, Share2, UserPlus } from "lucide-react-native";
+import { ArrowLeft, Camera, EyeOff, Hourglass, ImagePlus, Lock, MapPin, Mic, Music2, Navigation, Play, ScrollText, Share2, Sparkles, UserPlus } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Dimensions, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -318,6 +318,18 @@ export function EventDetailScreen({ navigation, route }: NativeStackScreenProps<
               </Stagger>
             ) : null}
 
+            {!sealed && event.media.length > 0 ? (
+              <Stagger delay={575}>
+                <AnimatedPressable
+                  onPress={() => navigation.navigate("EventRecap", { eventId: event.id, title: event.title })}
+                  style={styles.recapPill}
+                >
+                  <Sparkles color={colors.ink} size={13} />
+                  <Text style={styles.recapPillText}>Generate AI recap</Text>
+                </AnimatedPressable>
+              </Stagger>
+            ) : null}
+
             {event.unlockNote && !sealed ? (
               <Stagger delay={580}>
                 <View style={styles.letterPreview}>
@@ -549,6 +561,18 @@ const styles = StyleSheet.create({
   spotifyEyebrow: { ...type.micro, color: colors.muted },
   spotifyTitle: { ...type.caption, color: colors.fog, fontWeight: "600", marginTop: 2 },
   spotifyOpen: { ...type.micro, color: colors.gold, letterSpacing: 1.4 },
+  recapPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    backgroundColor: colors.gold,
+    marginTop: 6
+  },
+  recapPillText: { ...type.caption, color: colors.ink, fontWeight: "700" },
   captureRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   capNote: { ...type.micro, color: colors.muted, marginTop: 8, letterSpacing: 1 },
   empty: { paddingVertical: 40, gap: 6, alignItems: "center" },
