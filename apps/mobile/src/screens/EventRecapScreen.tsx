@@ -62,7 +62,7 @@ type Scene =
   | { id: string; kind: "photo"; photo: string; caption: string | null; line: string; date: string | null; author: RecapUser | null; duration: number }
   | { id: string; kind: "quote"; body: string; author: RecapUser | null; createdAt: string; photo: string | null; duration: number }
   | { id: string; kind: "reactions"; emoji: string; count: number; photo: string | null; duration: number }
-  | { id: string; kind: "outro"; title: string; line: string; generatedAt: string; duration: number };
+  | { id: string; kind: "collage"; title: string; photos: RecapHighlight[]; dateLabel: string; start: string; end: string; locationName: string | null; generatedAt: string; duration: number };
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -100,6 +100,7 @@ export function EventRecapScreen({ navigation, route }: NativeStackScreenProps<R
   const [paused, setPaused] = useState(false);
   const progress = useRef(new Animated.Value(0)).current;
   const sceneOpacity = useRef(new Animated.Value(0)).current;
+  const sceneScale = useRef(new Animated.Value(1.06)).current;
   const dismissDrag = useRef(new Animated.Value(0)).current;
   const [dismissY, setDismissY] = useState(0);
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -234,12 +235,16 @@ export function EventRecapScreen({ navigation, route }: NativeStackScreenProps<R
     }
 
     built.push({
-      id: "outro",
-      kind: "outro",
+      id: "collage",
+      kind: "collage",
       title: route.params.title,
-      line: recap.paragraphs[2] ?? "Sealed for later.",
+      photos: recap.highlights,
+      dateLabel: dateLabel,
+      start: recap.dateRange.start,
+      end: recap.dateRange.end,
+      locationName: recap.locationName,
       generatedAt: recap.generatedAt,
-      duration: 4400
+      duration: 8000
     });
 
     return built;
@@ -249,29 +254,39 @@ export function EventRecapScreen({ navigation, route }: NativeStackScreenProps<R
     if (!scenes.length) return;
     progress.setValue(0);
     sceneOpacity.setValue(0);
+    sceneScale.setValue(1.06);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-    Animated.timing(sceneOpacity, {
-      toValue: 1,
-      duration: 420,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true
-    }).start();
+    Animated.parallel([
+      Animated.timing(sceneOpacity, {
+        toValue: 1,
+        duration: 480,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true
+      }),
+      Animated.timing(sceneScale, {
+        toValue: 1,
+        duration: 640,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true
+      })
+    ]).start();
     if (paused) return;
     const duration = scenes[index]?.duration ?? 3000;
     progressAnim.current = Animated.timing(progress, { toValue: 1, duration, useNativeDriver: false });
     progressAnim.current.start();
     advanceTimer.current = setTimeout(() => {
       if (index < scenes.length - 1) {
-        Animated.timing(sceneOpacity, { toValue: 0, duration: 240, useNativeDriver: true }).start(() =>
-          setIndex((i) => Math.min(scenes.length - 1, i + 1))
-        );
+        Animated.parallel([
+          Animated.timing(sceneOpacity, { toValue: 0, duration: 280, useNativeDriver: true }),
+          Animated.timing(sceneScale, { toValue: 0.94, duration: 280, easing: Easing.in(Easing.cubic), useNativeDriver: true })
+        ]).start(() => setIndex((i) => Math.min(scenes.length - 1, i + 1)));
       }
     }, duration);
     return () => {
       progressAnim.current?.stop();
       advanceTimer.current && clearTimeout(advanceTimer.current);
     };
-  }, [index, scenes, paused, progress, sceneOpacity]);
+  }, [index, scenes, paused, progress, sceneOpacity, sceneScale]);
 
   function go(direction: 1 | -1) {
     Haptics.selectionAsync().catch(() => undefined);
@@ -280,7 +295,10 @@ export function EventRecapScreen({ navigation, route }: NativeStackScreenProps<R
       if (direction === 1) close();
       return;
     }
-    Animated.timing(sceneOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setIndex(next));
+    Animated.parallel([
+      Animated.timing(sceneOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(sceneScale, { toValue: direction === 1 ? 0.94 : 1.06, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true })
+    ]).start(() => setIndex(next));
   }
 
   function togglePause() {
@@ -346,7 +364,12 @@ export function EventRecapScreen({ navigation, route }: NativeStackScreenProps<R
       style={[styles.root, { transform: [{ translateY: dismissTranslate }], opacity: dismissBgOpacity }]}
       {...pan.panHandlers}
     >
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: sceneOpacity }]}>
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          { opacity: sceneOpacity, transform: [{ perspective: 1200 }, { scale: sceneScale }] }
+        ]}
+      >
         <SceneView scene={scene} />
       </Animated.View>
 
@@ -423,8 +446,8 @@ function SceneView({ scene }: { scene: Scene }) {
       return <QuoteScene scene={scene} />;
     case "reactions":
       return <ReactionsScene scene={scene} />;
-    case "outro":
-      return <OutroScene scene={scene} />;
+    case "collage":
+      return <CollageScene scene={scene} />;
   }
 }
 
@@ -830,54 +853,134 @@ function ReactionsScene({ scene }: { scene: Extract<Scene, { kind: "reactions" }
   );
 }
 
-function OutroScene({ scene }: { scene: Extract<Scene, { kind: "outro" }> }) {
-  const sparkleScale = useRef(new Animated.Value(0)).current;
-  const sparkleRotate = useRef(new Animated.Value(0)).current;
+// Hand-tuned positions for up to 8 polaroids around a centered date card.
+// Order matters: earlier entries land further back; later entries layer on top.
+const COLLAGE_SLOTS: Array<{ x: number; y: number; rot: number; tiltX: number; tiltY: number; delay: number }> = [
+  { x: -90, y: -190, rot: -8, tiltX: 6, tiltY: -4, delay: 200 },
+  { x: 100, y: -170, rot: 7, tiltX: 5, tiltY: 4, delay: 320 },
+  { x: -130, y: -40, rot: -14, tiltX: 4, tiltY: -6, delay: 460 },
+  { x: 120, y: -10, rot: 12, tiltX: 4, tiltY: 6, delay: 600 },
+  { x: -100, y: 160, rot: -10, tiltX: -4, tiltY: -5, delay: 760 },
+  { x: 110, y: 180, rot: 9, tiltX: -5, tiltY: 5, delay: 900 },
+  { x: -50, y: 240, rot: -4, tiltX: -6, tiltY: -2, delay: 1040 },
+  { x: 70, y: -250, rot: 14, tiltX: 7, tiltY: 3, delay: 1180 }
+];
+
+function CollageScene({ scene }: { scene: Extract<Scene, { kind: "collage" }> }) {
+  const cardScale = useRef(new Animated.Value(0.4)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
   const titleOpacity = useRef(new Animated.Value(0)).current;
-  const titleY = useRef(new Animated.Value(20)).current;
-  const lineOpacity = useRef(new Animated.Value(0)).current;
+  const dateOpacity = useRef(new Animated.Value(0)).current;
   const footerOpacity = useRef(new Animated.Value(0)).current;
+  const drift = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.sequence([
-      Animated.parallel([
-        Animated.spring(sparkleScale, { toValue: 1, useNativeDriver: true, friction: 5, tension: 90 }),
-        Animated.timing(sparkleRotate, { toValue: 1, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: true })
-      ]),
-      Animated.delay(160),
-      Animated.parallel([
-        Animated.timing(titleOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.spring(titleY, { toValue: 0, useNativeDriver: true, friction: 7, tension: 70 })
-      ]),
-      Animated.delay(180),
-      Animated.timing(lineOpacity, { toValue: 1, duration: 800, useNativeDriver: true }),
-      Animated.delay(200),
-      Animated.timing(footerOpacity, { toValue: 1, duration: 600, useNativeDriver: true })
+    Animated.parallel([
+      Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 6, tension: 80 }),
+      Animated.timing(cardOpacity, { toValue: 1, duration: 600, useNativeDriver: true })
     ]).start();
-  }, [sparkleScale, sparkleRotate, titleOpacity, titleY, lineOpacity, footerOpacity]);
+    Animated.sequence([
+      Animated.delay(180),
+      Animated.timing(titleOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.delay(120),
+      Animated.timing(dateOpacity, { toValue: 1, duration: 700, useNativeDriver: true })
+    ]).start();
+    // Footer arrives after the last polaroid has settled
+    Animated.sequence([
+      Animated.delay(1400),
+      Animated.timing(footerOpacity, { toValue: 1, duration: 700, useNativeDriver: true })
+    ]).start();
+    // Subtle continuous breathing on the whole pile
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(drift, { toValue: 1, duration: 5200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(drift, { toValue: 0, duration: 5200, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
+      ])
+    ).start();
+  }, [cardScale, cardOpacity, titleOpacity, dateOpacity, footerOpacity, drift]);
 
-  const rotate = sparkleRotate.interpolate({ inputRange: [0, 1], outputRange: ["-25deg", "0deg"] });
+  const start = new Date(scene.start);
+  const end = new Date(scene.end);
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const monthLabel = sameMonth
+    ? MONTHS_SHORT[start.getMonth()]
+    : `${MONTHS_SHORT[start.getMonth()]} – ${MONTHS_SHORT[end.getMonth()]}`;
+  const dayLabel = sameMonth ? `${start.getDate()}–${end.getDate()}` : `${start.getDate()} · ${end.getDate()}`;
+
+  const breathe = drift.interpolate({ inputRange: [0, 1], outputRange: [-3, 3] });
 
   return (
     <View style={sceneStyles.fill}>
-      <LinearGradient colors={gradients.gold} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-      <View pointerEvents="none" style={sceneStyles.outroVignette} />
-      <View style={sceneStyles.outroStack}>
-        <Animated.View style={[sceneStyles.outroBadge, { transform: [{ scale: sparkleScale }, { rotate }] }]}>
-          <Sparkles color={colors.gold} size={28} />
+      <LinearGradient colors={["#0F0D14", "#0A080F", "#181020"]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View pointerEvents="none" style={sceneStyles.collageGrain} />
+
+      <Animated.View style={[sceneStyles.collageStage, { transform: [{ translateY: breathe }] }]}>
+        {scene.photos.slice(0, COLLAGE_SLOTS.length).map((photo, i) => (
+          <CollagePhoto key={photo.id} photo={photo} slot={COLLAGE_SLOTS[i]} />
+        ))}
+
+        <Animated.View
+          style={[
+            sceneStyles.collageCard,
+            { opacity: cardOpacity, transform: [{ scale: cardScale }, { perspective: 1000 }, { rotateX: "2deg" }, { rotate: "-1.5deg" }] }
+          ]}
+        >
+          <Animated.Text style={[sceneStyles.collageCardKicker, { opacity: titleOpacity }]}>TIME CAPSULE</Animated.Text>
+          <Animated.Text style={[sceneStyles.collageCardTitle, { opacity: titleOpacity }]}>{scene.title}</Animated.Text>
+          <Animated.Text style={[sceneStyles.collageCardMonth, { opacity: dateOpacity }]}>{monthLabel}</Animated.Text>
+          <Animated.Text style={[sceneStyles.collageCardDay, { opacity: dateOpacity }]}>{dayLabel}</Animated.Text>
+          <Animated.Text style={[sceneStyles.collageCardYear, { opacity: dateOpacity }]}>{start.getFullYear()}</Animated.Text>
+          {scene.locationName ? (
+            <Animated.Text style={[sceneStyles.collageCardPlace, { opacity: dateOpacity }]}>{scene.locationName}</Animated.Text>
+          ) : null}
         </Animated.View>
-        <Animated.Text style={[sceneStyles.outroTitle, { opacity: titleOpacity, transform: [{ translateY: titleY }] }]}>
-          {scene.title}
-        </Animated.Text>
-        <Animated.Text style={[sceneStyles.outroLine, { opacity: lineOpacity }]}>{scene.line}</Animated.Text>
-        <Animated.View style={[sceneStyles.outroFooterRow, { opacity: footerOpacity }]}>
-          <Sparkles color={colors.ink} size={10} />
-          <Text style={sceneStyles.outroFooterText}>
-            TIME CAPSULE · {formatLongDate(scene.generatedAt).toUpperCase()} · {formatTime(scene.generatedAt)}
-          </Text>
-        </Animated.View>
-      </View>
+      </Animated.View>
+
+      <Animated.View pointerEvents="none" style={[sceneStyles.collageFooter, { opacity: footerOpacity }]}>
+        <Sparkles color={colors.gold} size={10} />
+        <Text style={sceneStyles.collageFooterText}>
+          GENERATED {formatLongDate(scene.generatedAt).toUpperCase()} · {formatTime(scene.generatedAt)}
+        </Text>
+      </Animated.View>
     </View>
+  );
+}
+
+function CollagePhoto({ photo, slot }: { photo: RecapHighlight; slot: typeof COLLAGE_SLOTS[number] }) {
+  const value = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(slot.delay),
+      Animated.spring(value, { toValue: 1, useNativeDriver: true, friction: 7, tension: 70 })
+    ]).start();
+  }, [value, slot.delay]);
+
+  const opacity = value;
+  const scale = value.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
+  const translateY = value.interpolate({ inputRange: [0, 1], outputRange: [40, 0] });
+
+  return (
+    <Animated.View
+      style={[
+        sceneStyles.collagePolaroid,
+        {
+          left: SCREEN_W / 2 + slot.x - 64,
+          top: SCREEN_H / 2 + slot.y - 78,
+          opacity,
+          transform: [
+            { scale },
+            { translateY },
+            { perspective: 1000 },
+            { rotate: `${slot.rot}deg` },
+            { rotateX: `${slot.tiltX}deg` },
+            { rotateY: `${slot.tiltY}deg` }
+          ]
+        }
+      ]}
+    >
+      <Image source={{ uri: photo.url }} style={sceneStyles.collagePolaroidImage} contentFit="cover" transition={250} />
+      {photo.caption ? <Text numberOfLines={1} style={sceneStyles.collagePolaroidCaption}>{photo.caption}</Text> : null}
+    </Animated.View>
   );
 }
 
@@ -987,14 +1090,48 @@ const sceneStyles = StyleSheet.create({
   reactionsNumber: { fontSize: 96, lineHeight: 100, fontWeight: "800", color: colors.fog, fontVariant: ["tabular-nums"], letterSpacing: -3, marginTop: 12 },
   reactionsLabel: { ...type.micro, color: colors.gold, letterSpacing: 2.8, marginTop: 4, fontWeight: "700", textAlign: "center" },
 
-  // Outro
-  outroVignette: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.gold, opacity: 0 },
-  outroStack: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28, gap: 14 },
-  outroBadge: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", backgroundColor: colors.ink },
-  outroTitle: { ...type.hero, color: colors.ink, textAlign: "center", fontSize: 38, lineHeight: 44, letterSpacing: -1 },
-  outroLine: { ...type.subtitle, color: colors.ink, opacity: 0.78, textAlign: "center", maxWidth: 320, fontStyle: "italic" },
-  outroFooterRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 22, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: "rgba(11,10,16,0.10)" },
-  outroFooterText: { ...type.micro, color: colors.ink, letterSpacing: 1.6, fontWeight: "700" }
+  // Collage (final destination)
+  collageStage: { flex: 1, alignItems: "center", justifyContent: "center" },
+  collageGrain: { ...StyleSheet.absoluteFillObject, backgroundColor: "#fbf5e8", opacity: 0.02 },
+  collagePolaroid: {
+    position: "absolute",
+    width: 128,
+    height: 156,
+    backgroundColor: colors.fog,
+    borderRadius: 4,
+    padding: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 }
+  },
+  collagePolaroidImage: { flex: 1, backgroundColor: "#2A2336", borderRadius: 2 },
+  collagePolaroidCaption: { fontSize: 10, color: colors.ink, textAlign: "center", marginTop: 4, fontStyle: "italic", fontWeight: "600" },
+  collageCard: {
+    width: 200,
+    height: 264,
+    backgroundColor: colors.fog,
+    borderRadius: 6,
+    paddingHorizontal: 16,
+    paddingTop: 22,
+    paddingBottom: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.55,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    borderWidth: 1,
+    borderColor: "rgba(11,10,16,0.06)"
+  },
+  collageCardKicker: { fontSize: 10, color: colors.gold, letterSpacing: 2.6, fontWeight: "800" },
+  collageCardTitle: { fontSize: 18, color: colors.ink, fontWeight: "800", textAlign: "center", letterSpacing: -0.3, marginTop: 8, lineHeight: 22 },
+  collageCardMonth: { fontSize: 14, color: colors.muted, letterSpacing: 4, fontWeight: "700", marginTop: 18 },
+  collageCardDay: { fontSize: 64, lineHeight: 68, color: colors.ink, fontWeight: "800", fontVariant: ["tabular-nums"], letterSpacing: -2, marginTop: 2 },
+  collageCardYear: { fontSize: 12, color: colors.muted, letterSpacing: 5, fontWeight: "300", marginTop: 6 },
+  collageCardPlace: { fontSize: 11, color: colors.ink, opacity: 0.55, marginTop: 14, fontStyle: "italic" },
+  collageFooter: { position: "absolute", left: 0, right: 0, bottom: 60, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
+  collageFooterText: { fontSize: 10, color: colors.fog, letterSpacing: 1.8, fontWeight: "700", opacity: 0.75 }
 });
 
 const avatarStyles = StyleSheet.create({
