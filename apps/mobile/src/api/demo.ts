@@ -507,6 +507,9 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     const daysSpan = times.length > 1
       ? Math.max(1, Math.ceil((times[times.length - 1] - times[0]) / 86_400_000))
       : 1;
+    const dateRange = times.length > 0
+      ? { start: new Date(times[0]).toISOString(), end: new Date(times[times.length - 1]).toISOString() }
+      : { start: event.eventDate, end: event.eventDate };
 
     let totalReactions = 0;
     const reactionTally: Record<string, number> = {};
@@ -517,10 +520,32 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
     }
     const topEmoji = Object.entries(reactionTally).sort((a, b) => b[1] - a[1])[0]?.[0];
 
-    const totalComments = Object.entries(store.comments).reduce(
-      (sum, [mediaId, list]) => sum + (list.length && (store.media[eventId] ?? []).some((m) => m.id === mediaId) ? list.length : 0),
-      0
-    );
+    const eventMediaIds = new Set(list.map((m) => m.id));
+    const eventCommentsAll: DemoComment[] = [];
+    let totalComments = 0;
+    for (const [mediaId, cs] of Object.entries(store.comments)) {
+      if (!eventMediaIds.has(mediaId)) continue;
+      totalComments += cs.length;
+      eventCommentsAll.push(...cs);
+    }
+
+    // Pick a top comment — longest among the most-recent few feels best
+    const topCommentSource = [...eventCommentsAll]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5)
+      .sort((a, b) => b.body.length - a.body.length)[0];
+    const topComment = topCommentSource
+      ? (() => {
+          const author = store.users.find((u) => u.id === topCommentSource.userId);
+          const media = list.find((m) => m.id === topCommentSource.mediaId);
+          return {
+            body: topCommentSource.body,
+            createdAt: topCommentSource.createdAt,
+            author: author ? publicUser(author) : null,
+            mediaUrl: media?.url ?? null
+          };
+        })()
+      : null;
 
     const highlights = [...list]
       .map((m) => ({
@@ -529,12 +554,17 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 4)
-      .map(({ media }) => ({
-        id: media.id,
-        url: media.url,
-        caption: media.caption ?? null,
-        kind: media.kind
-      }));
+      .map(({ media }) => {
+        const author = store.users.find((u) => u.id === media.addedByUserId);
+        return {
+          id: media.id,
+          url: media.url,
+          caption: media.caption ?? null,
+          kind: media.kind,
+          capturedAt: media.capturedAt ?? null,
+          addedBy: author ? publicUser(author) : null
+        };
+      });
 
     const contributorPhrase = contributors.length === 0
       ? "you"
@@ -577,6 +607,16 @@ export async function handleDemoRequest<T>(path: string, options: RequestOptions
       },
       topEmoji: topEmoji ?? null,
       highlights,
+      dateRange,
+      contributorList: contributors.length > 0
+        ? contributors.map((u) => publicUser(u))
+        : [{ id: store.currentUserId ?? "me", username: "you", displayName: "You", avatarUrl: undefined }],
+      topComment,
+      coverUrl: event.coverUrl ?? null,
+      locationName: event.locationName ?? null,
+      eventDate: event.eventDate,
+      unlockAt: event.unlockAt ?? null,
+      collectionClosesAt: event.collectionClosesAt ?? null,
       generatedAt: new Date().toISOString()
     } as T;
   }
