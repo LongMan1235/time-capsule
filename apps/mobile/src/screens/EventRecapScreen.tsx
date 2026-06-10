@@ -523,7 +523,6 @@ function PhotoWallItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "
   });
   const y = useDerivedValue(() => SCREEN_H * 0.5 - (baseH * scale.value) / 2 + (z - cameraZ.value) * 18);
 
-  // Build the panel as a parallelogram so it reads like an angled wall.
   const wallPath = useDerivedValue(() => {
     "worklet";
     const sw = w.value;
@@ -546,6 +545,13 @@ function PhotoWallItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "
     path.close();
     return path;
   });
+
+  // Caption x/y hooks must be unconditional. Compute even when there's no caption.
+  const captionX = useDerivedValue(() => x.value + 18);
+  const captionY = useDerivedValue(() => y.value + h.value - 36);
+  const dateX = useDerivedValue(() => x.value + 18);
+  const dateY = useDerivedValue(() => y.value + h.value - 14);
+  const shadowY = useDerivedValue(() => y.value + h.value - 80 * scale.value);
 
   if (!image) return null;
   return (
@@ -573,7 +579,7 @@ function PhotoWallItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "
           />
         </Rect>
         {/* Bottom-up shadow to suggest the wall meeting the floor */}
-        <Rect x={x} y={useDerivedValue(() => y.value + h.value - 80 * scale.value)} width={w} height={80} opacity={0.7}>
+        <Rect x={x} y={shadowY} width={w} height={80} opacity={0.7}>
           <SkiaLinearGradient
             start={vec(0, 0)}
             end={vec(0, 80)}
@@ -586,18 +592,13 @@ function PhotoWallItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "
 
       {/* Caption + date as etched text near the bottom edge of the panel */}
       {step.caption ? (
-        <CaptionText
-          text={`"${step.caption}"`}
-          x={useDerivedValue(() => x.value + 18)}
-          y={useDerivedValue(() => y.value + h.value - 36)}
-          scale={scale}
-        />
+        <CaptionText text={`"${step.caption}"`} x={captionX} y={captionY} scale={scale} />
       ) : null}
       {step.date ? (
         <CaptionText
           text={formatLongDate(step.date).toUpperCase()}
-          x={useDerivedValue(() => x.value + 18)}
-          y={useDerivedValue(() => y.value + h.value - 14)}
+          x={dateX}
+          y={dateY}
           scale={scale}
           color="#E8C26B"
           size={9}
@@ -621,19 +622,26 @@ function PhotoPortalItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind:
   const x = useDerivedValue(() => SCREEN_W / 2 - w.value / 2);
   const y = useDerivedValue(() => SCREEN_H * 0.38 - h.value / 2 + (z - cameraZ.value) * 22);
 
+  const haloX = useDerivedValue(() => x.value - 14);
+  const haloY = useDerivedValue(() => y.value - 14);
+  const haloW = useDerivedValue(() => w.value + 28);
+  const haloH = useDerivedValue(() => h.value + 28);
+  const clipPath = useDerivedValue(() => {
+    "worklet";
+    const p = Skia.Path.Make();
+    p.addRRect({ rect: { x: x.value, y: y.value, width: w.value, height: h.value }, rx: 18, ry: 18 });
+    return p;
+  });
+  const scrimY = useDerivedValue(() => y.value + h.value - 90 * scale.value);
+  const captionX = useDerivedValue(() => x.value + 24);
+  const captionY = useDerivedValue(() => y.value + h.value - 22);
+
   if (!image) return null;
 
   return (
     <Group opacity={opacity}>
       {/* Soft glow halo around the portal */}
-      <RoundedRect
-        x={useDerivedValue(() => x.value - 14)}
-        y={useDerivedValue(() => y.value - 14)}
-        width={useDerivedValue(() => w.value + 28)}
-        height={useDerivedValue(() => h.value + 28)}
-        r={26}
-        opacity={0.35}
-      >
+      <RoundedRect x={haloX} y={haloY} width={haloW} height={haloH} r={26} opacity={0.35}>
         <BlurMask blur={26} style="normal" />
         <SkiaLinearGradient
           start={vec(0, 0)}
@@ -643,18 +651,8 @@ function PhotoPortalItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind:
       </RoundedRect>
 
       {/* The portal itself — masked image with rounded corners */}
-      <Group clip={useDerivedValue(() => {
-        "worklet";
-        const p = Skia.Path.Make();
-        p.addRRect({
-          rect: { x: x.value, y: y.value, width: w.value, height: h.value },
-          rx: 18,
-          ry: 18
-        });
-        return p;
-      })}>
+      <Group clip={clipPath}>
         <SkImage image={image} x={x} y={y} width={w} height={h} fit="cover" />
-        {/* Slight gold color cast */}
         <Rect x={x} y={y} width={w} height={h} opacity={0.10}>
           <SkiaLinearGradient
             start={vec(0, 0)}
@@ -662,8 +660,7 @@ function PhotoPortalItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind:
             colors={["rgba(252,234,176,0.4)", "rgba(120,80,30,0)"]}
           />
         </Rect>
-        {/* Bottom scrim for caption legibility */}
-        <Rect x={x} y={useDerivedValue(() => y.value + h.value - 90 * scale.value)} width={w} height={90} opacity={0.7}>
+        <Rect x={x} y={scrimY} width={w} height={90} opacity={0.7}>
           <SkiaLinearGradient
             start={vec(0, 0)}
             end={vec(0, 90)}
@@ -675,13 +672,7 @@ function PhotoPortalItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind:
       <BlurMask blur={blur} style="normal" />
 
       {step.caption ? (
-        <CaptionText
-          text={`"${step.caption}"`}
-          x={useDerivedValue(() => x.value + 24)}
-          y={useDerivedValue(() => y.value + h.value - 22)}
-          scale={scale}
-          size={14}
-        />
+        <CaptionText text={`"${step.caption}"`} x={captionX} y={captionY} scale={scale} size={14} />
       ) : null}
     </Group>
   );
@@ -871,9 +862,8 @@ function FinaleCanvas({ recap, title }: { recap: RecapResponse; title: string })
 
 function FinalePhoto({ url, slot, index }: { url: string; slot: FinaleSlot; index: number }) {
   const image = useImage(url);
-  if (!image) return null;
 
-  // Build the mask path based on shape kind
+  // Build the mask path based on shape kind — hook called unconditionally.
   const maskPath = useMemo(() => {
     const p = Skia.Path.Make();
     switch (slot.shape) {
@@ -942,6 +932,8 @@ function FinalePhoto({ url, slot, index }: { url: string; slot: FinaleSlot; inde
   const imageY = slot.cy - slot.ry * 1.1;
   const imageW = slot.rx * 2.2;
   const imageH = slot.ry * 2.2;
+
+  if (!image) return null;
 
   return (
     <Group
