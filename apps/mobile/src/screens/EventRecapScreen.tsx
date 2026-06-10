@@ -1,29 +1,54 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
-import { ArrowDown, Pause, Share2, Sparkles, UserRound, X } from "lucide-react-native";
-import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Animated,
+  BlurMask,
+  Canvas,
+  ColorMatrix,
+  Fill,
+  Group,
+  Image as SkImage,
+  LinearGradient as SkiaLinearGradient,
+  Path,
+  RadialGradient,
+  Rect,
+  RoundedRect,
+  Skia,
+  Text as SkText,
+  matchFont,
+  rect,
+  vec,
+  useImage,
+  type SkImage as SkImageType
+} from "@shopify/react-native-skia";
+import * as Haptics from "expo-haptics";
+import { ArrowDown, Share2, X } from "lucide-react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
   Dimensions,
-  Easing,
   PanResponder,
+  Pressable,
   Share,
   StyleSheet,
   Text,
   View
 } from "react-native";
+import Animated, {
+  Easing,
+  type SharedValue,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+  withSpring,
+  withTiming
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../api/client";
-import { AnimatedPressable } from "../components/AnimatedPressable";
-import { FloatingReactions, type FloatingReaction } from "../components/FloatingReactions";
 import { KintsugiLoader } from "../components/KintsugiLoader";
-import { colors, radii, type } from "../design/theme";
+import { colors } from "../design/theme";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+const HORIZON_Y = SCREEN_H * 0.42;
+const FLOOR_Y = SCREEN_H * 0.78;
 
 const MONTHS_SHORT = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -32,9 +57,15 @@ function formatLongDate(iso: string) {
   const d = new Date(iso);
   return `${MONTHS_LONG[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
+
 function formatTime(iso: string) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "numeric" }).format(new Date(iso));
 }
+
+const titleFont = matchFont({ fontFamily: "Helvetica", fontSize: 32, fontWeight: "800" } as never);
+const microFont = matchFont({ fontFamily: "Helvetica", fontSize: 10, fontWeight: "700" } as never);
+const bodyFont = matchFont({ fontFamily: "Helvetica", fontSize: 14, fontWeight: "500" } as never);
+const bigNumberFont = matchFont({ fontFamily: "Helvetica", fontSize: 96, fontWeight: "800" } as never);
 
 interface RecapUser {
   id: string;
@@ -68,17 +99,15 @@ interface RecapResponse {
   generatedAt: string;
 }
 
-type WalkItem =
-  | { id: string; kind: "title"; title: string; subtitle: string }
-  | { id: string; kind: "calendar"; start: string; end: string }
+type StepKind =
+  | { id: string; kind: "title"; title: string; date: string }
+  | { id: string; kind: "photo-wall"; url: string; caption: string | null; date: string | null; side: "left" | "right" }
+  | { id: string; kind: "photo-portal"; url: string; caption: string | null }
   | { id: string; kind: "stat"; value: number; label: string }
-  | { id: string; kind: "people"; people: RecapUser[]; line: string }
-  | { id: string; kind: "photo"; photo: string; caption: string | null; date: string | null; author: RecapUser | null }
-  | { id: string; kind: "quote"; body: string; author: RecapUser | null; createdAt: string }
-  | { id: string; kind: "reactions"; emoji: string; count: number };
+  | { id: string; kind: "quote"; body: string; authorName: string; createdAt: string }
+  | { id: string; kind: "names"; people: RecapUser[]; line: string }
+  | { id: string; kind: "finale" };
 
-/* ------------------------------------------------------------------ */
-/* SCREEN                                                             */
 /* ------------------------------------------------------------------ */
 
 export function EventRecapScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, "EventRecap">) {
@@ -97,7 +126,7 @@ export function EventRecapScreen({ navigation, route }: NativeStackScreenProps<R
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#F4EFE6" }}>
+      <View style={{ flex: 1, backgroundColor: "#F2EBDD" }}>
         <KintsugiLoader label="GENERATING YOUR RECAP" onComplete={() => setLoaderDone(true)} />
         {error ? (
           <View style={styles.errorOverlay}>
@@ -108,138 +137,53 @@ export function EventRecapScreen({ navigation, route }: NativeStackScreenProps<R
     );
   }
 
-  return <WalkwayRecap navigation={navigation} route={route} recap={recap!} insets={insets} />;
+  return <Walkway navigation={navigation} route={route} recap={recap!} topInset={insets.top} bottomInset={insets.bottom} />;
 }
 
 /* ------------------------------------------------------------------ */
 /* WALKWAY                                                            */
 /* ------------------------------------------------------------------ */
 
-function WalkwayRecap({
+function Walkway({
   navigation,
   route,
   recap,
-  insets
+  topInset,
+  bottomInset
 }: {
   navigation: NativeStackScreenProps<RootStackParamList, "EventRecap">["navigation"];
   route: NativeStackScreenProps<RootStackParamList, "EventRecap">["route"];
   recap: RecapResponse;
-  insets: { top: number; bottom: number; left: number; right: number };
+  topInset: number;
+  bottomInset: number;
 }) {
-  const [paused, setPaused] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [arrivedAtEnd, setArrivedAtEnd] = useState(false);
-  const dismissDrag = useRef(new Animated.Value(0)).current;
+  const steps = useMemo<StepKind[]>(() => buildSteps(recap, route.params.title), [recap, route.params.title]);
+
+  // cameraZ is the user's position along the corridor (0 = first step, increments by 1 each tap).
+  // We animate it smoothly with reanimated so the camera glides forward.
+  const cameraZ = useSharedValue(0);
+  const dismissDrag = useSharedValue(0);
+  const [stepIndex, setStepIndex] = useState(0);
   const [dismissY, setDismissY] = useState(0);
-  const walkProgress = useRef(new Animated.Value(0)).current;
-  const stepListener = useRef<string | undefined>(undefined);
-  const walkAnim = useRef<Animated.CompositeAnimation | undefined>(undefined);
-  const enterOpacity = useRef(new Animated.Value(0)).current;
 
-  const items = useMemo<WalkItem[]>(() => {
-    const built: WalkItem[] = [];
-    built.push({
-      id: "title",
-      kind: "title",
-      title: route.params.title,
-      subtitle: "AN AI RECAP"
-    });
-    built.push({ id: "calendar", kind: "calendar", start: recap.dateRange.start, end: recap.dateRange.end });
-    built.push({
-      id: "stat-memories",
-      kind: "stat",
-      value: recap.stats.memories,
-      label: recap.stats.memories === 1 ? "MEMORY" : "MEMORIES"
-    });
-    if (recap.contributorList.length > 0) {
-      built.push({
-        id: "people",
-        kind: "people",
-        people: recap.contributorList.slice(0, 5),
-        line:
-          recap.contributorList.length === 1
-            ? "Just you."
-            : `${recap.contributorList.length} hands held this one.`
-      });
-    }
-    recap.highlights.slice(0, 2).forEach((h, i) =>
-      built.push({
-        id: `photo-${i}`,
-        kind: "photo",
-        photo: h.url,
-        caption: h.caption,
-        date: h.capturedAt,
-        author: h.addedBy
-      })
-    );
-    built.push({
-      id: "stat-days",
-      kind: "stat",
-      value: recap.stats.daysSpan,
-      label: recap.stats.daysSpan === 1 ? "DAY" : "DAYS"
-    });
-    if (recap.topComment) {
-      built.push({
-        id: "quote",
-        kind: "quote",
-        body: recap.topComment.body,
-        author: recap.topComment.author,
-        createdAt: recap.topComment.createdAt
-      });
-    }
-    if (recap.highlights[2]) {
-      const h = recap.highlights[2];
-      built.push({ id: "photo-2", kind: "photo", photo: h.url, caption: h.caption, date: h.capturedAt, author: h.addedBy });
-    }
-    if (recap.topEmoji && recap.stats.reactions > 0) {
-      built.push({ id: "reactions", kind: "reactions", emoji: recap.topEmoji, count: recap.stats.reactions });
-    }
-    return built;
-  }, [recap, route.params.title]);
-
-  // Each item occupies one walkProgress unit. We walk from 0 to items.length.
-  const totalLength = items.length;
-  const itemDurationMs = 2400;
-
-  useEffect(() => {
-    Animated.timing(enterOpacity, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-  }, [enterOpacity]);
-
-  useEffect(() => {
-    if (paused) {
-      walkAnim.current?.stop();
+  function advance() {
+    if (stepIndex >= steps.length - 1) {
+      // Already at finale — do nothing extra; user closes manually.
       return;
     }
-    const current = (walkProgress as Animated.Value & { _value?: number })._value ?? 0;
-    const remaining = Math.max(0, totalLength - current);
-    if (remaining <= 0) return;
-    walkAnim.current = Animated.timing(walkProgress, {
-      toValue: totalLength,
-      duration: remaining * itemDurationMs,
-      easing: Easing.linear,
-      useNativeDriver: true
-    });
-    walkAnim.current.start(({ finished }) => {
-      if (finished) {
-        setArrivedAtEnd(true);
-      }
-    });
-    return () => walkAnim.current?.stop();
-  }, [paused, walkProgress, totalLength]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    const next = stepIndex + 1;
+    setStepIndex(next);
+    cameraZ.value = withTiming(next, { duration: 1100, easing: Easing.bezier(0.42, 0, 0.18, 1) });
+  }
 
-  // Track which item is currently "at camera" for haptic beats and progress UI.
-  useEffect(() => {
-    stepListener.current = walkProgress.addListener(({ value }) => {
-      const next = Math.min(items.length - 1, Math.max(0, Math.floor(value)));
-      if (next !== activeIndex) {
-        setActiveIndex(next);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-      }
-    });
-    return () => {
-      if (stepListener.current) walkProgress.removeListener(stepListener.current);
-    };
-  }, [walkProgress, activeIndex, items.length]);
+  function rewind() {
+    if (stepIndex <= 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    const next = stepIndex - 1;
+    setStepIndex(next);
+    cameraZ.value = withTiming(next, { duration: 800, easing: Easing.bezier(0.42, 0, 0.18, 1) });
+  }
 
   function close() {
     navigation.goBack();
@@ -255,46 +199,21 @@ function WalkwayRecap({
     }
   }
 
-  function togglePause() {
-    Haptics.selectionAsync().catch(() => undefined);
-    setPaused((p) => !p);
-  }
-
-  function skip() {
-    Haptics.selectionAsync().catch(() => undefined);
-    const current = (walkProgress as Animated.Value & { _value?: number })._value ?? 0;
-    const target = Math.min(totalLength, Math.floor(current) + 1);
-    walkAnim.current?.stop();
-    Animated.timing(walkProgress, { toValue: target, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
-      if (target >= totalLength) setArrivedAtEnd(true);
-    });
-  }
-
-  function back() {
-    Haptics.selectionAsync().catch(() => undefined);
-    const current = (walkProgress as Animated.Value & { _value?: number })._value ?? 0;
-    const target = Math.max(0, Math.floor(current) - 1);
-    walkAnim.current?.stop();
-    Animated.timing(walkProgress, { toValue: target, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-    setArrivedAtEnd(false);
-  }
-
   const pan = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_evt, gesture) =>
-          Math.abs(gesture.dy) > 16 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
-        onPanResponderMove: (_evt, gesture) => {
-          if (gesture.dy > 0) {
-            dismissDrag.setValue(gesture.dy);
-            setDismissY(gesture.dy);
+        onMoveShouldSetPanResponder: (_evt, g) => g.dy > 16 && Math.abs(g.dy) > Math.abs(g.dx),
+        onPanResponderMove: (_evt, g) => {
+          if (g.dy > 0) {
+            dismissDrag.value = g.dy;
+            setDismissY(g.dy);
           }
         },
-        onPanResponderRelease: (_evt, gesture) => {
-          if (gesture.dy > 140) {
+        onPanResponderRelease: (_evt, g) => {
+          if (g.dy > 140) {
             close();
           } else {
-            Animated.spring(dismissDrag, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
+            dismissDrag.value = withSpring(0, { damping: 18, stiffness: 200 });
             setDismissY(0);
           }
         }
@@ -302,714 +221,983 @@ function WalkwayRecap({
     [dismissDrag]
   );
 
-  const dismissTranslate = dismissDrag.interpolate({ inputRange: [0, 400], outputRange: [0, 400], extrapolate: "clamp" });
-  const dismissOpacity = dismissDrag.interpolate({ inputRange: [0, 200], outputRange: [1, 0.4], extrapolate: "clamp" });
+  const dismissStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: dismissDrag.value }],
+    opacity: 1 - Math.min(0.6, dismissDrag.value / 400)
+  }));
+
+  const atFinale = stepIndex >= steps.length - 1;
 
   return (
-    <Animated.View
-      style={[styles.root, { opacity: dismissOpacity, transform: [{ translateY: dismissTranslate }] }]}
-      {...pan.panHandlers}
-    >
-      {/* The walking environment */}
-      <CorridorBackdrop walkProgress={walkProgress} />
+    <Animated.View style={[styles.root, dismissStyle]} {...pan.panHandlers}>
+      <CorridorCanvas steps={steps} cameraZ={cameraZ} />
 
-      {/* Items floating along the corridor */}
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: enterOpacity }]}>
-        {items.map((item, index) => (
-          <WalkItemView key={item.id} item={item} index={index} walkProgress={walkProgress} />
-        ))}
-      </Animated.View>
-
-      {/* Final collage destination, fades in when arrived */}
-      {arrivedAtEnd ? (
-        <FinalCollage
+      {atFinale ? (
+        <FinaleCanvas
           recap={recap}
           title={route.params.title}
-          onClose={close}
-          onShare={share}
         />
       ) : null}
 
-      {/* Progress pips */}
-      <View style={[styles.progressRow, { top: insets.top + 12 }]}>
-        {items.map((_, i) => (
-          <View key={i} style={styles.progressTrack}>
-            <Animated.View
-              style={[
-                styles.progressFill,
-                {
-                  width: walkProgress.interpolate({
-                    inputRange: [i, i + 1],
-                    outputRange: ["0%", "100%"],
-                    extrapolate: "clamp"
-                  })
-                }
-              ]}
-            />
-          </View>
+      {/* Step indicator: minimal vertical pip column on the right */}
+      <View style={[styles.stepColumn, { top: topInset + 90 }]} pointerEvents="none">
+        {steps.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.stepPip,
+              { backgroundColor: i <= stepIndex ? colors.gold : "rgba(232,194,107,0.18)" }
+            ]}
+          />
         ))}
       </View>
 
       {/* Top bar */}
-      <View style={[styles.topBar, { top: insets.top + 28 }]} pointerEvents="box-none">
+      <View style={[styles.topBar, { top: topInset + 12 }]} pointerEvents="box-none">
         <View style={styles.recapBadge}>
-          <Sparkles color={colors.ink} size={10} />
-          <Text style={styles.recapBadgeText}>AI RECAP</Text>
+          <View style={styles.recapBadgeDot} />
+          <Text style={styles.recapBadgeText}>AI RECAP · {String(stepIndex + 1).padStart(2, "0")} / {String(steps.length).padStart(2, "0")}</Text>
         </View>
-        <View style={styles.topRight}>
-          <AnimatedPressable onPress={share} style={styles.iconBtn}>
-            <Share2 color={colors.fog} size={16} />
-          </AnimatedPressable>
-          <AnimatedPressable onPress={close} style={styles.iconBtn}>
-            <X color={colors.fog} size={18} />
-          </AnimatedPressable>
+        <View style={styles.topBarRight}>
+          <Pressable onPress={share} style={styles.iconBtn} hitSlop={10}>
+            <Share2 color={colors.fog} size={14} />
+          </Pressable>
+          <Pressable onPress={close} style={styles.iconBtn} hitSlop={10}>
+            <X color={colors.fog} size={16} />
+          </Pressable>
         </View>
       </View>
 
-      {/* Tap zones */}
-      {!arrivedAtEnd ? (
-        <>
-          <AnimatedPressable onPress={back} style={[styles.tapZone, { left: 0, width: SCREEN_W / 4 }]}>
-            <View />
-          </AnimatedPressable>
-          <AnimatedPressable onPress={togglePause} style={[styles.tapZone, { left: SCREEN_W / 4, width: SCREEN_W / 2 }]}>
-            <View />
-          </AnimatedPressable>
-          <AnimatedPressable onPress={skip} style={[styles.tapZone, { right: 0, width: SCREEN_W / 4 }]}>
-            <View />
-          </AnimatedPressable>
-        </>
-      ) : null}
+      {/* Tap zones: left = back, right + center = forward */}
+      <Pressable onPress={rewind} style={[styles.tapZone, { left: 0, width: SCREEN_W * 0.22 }]} />
+      <Pressable onPress={advance} style={[styles.tapZone, { left: SCREEN_W * 0.22, right: 0 }]} />
 
-      {paused ? (
-        <View pointerEvents="none" style={styles.pauseBadge}>
-          <Pause color={colors.fog} size={14} fill={colors.fog} />
-        </View>
-      ) : null}
-
-      <View
-        pointerEvents="none"
-        style={[
-          styles.dismissHint,
-          { bottom: insets.bottom + 18, opacity: dismissY > 0 ? Math.max(0, 1 - dismissY / 100) : 0.35 }
-        ]}
-      >
-        <ArrowDown color={colors.fog} size={11} />
-        <Text style={styles.dismissText}>swipe down to close</Text>
+      {/* Bottom hint */}
+      <View pointerEvents="none" style={[styles.bottomHint, { bottom: bottomInset + 24 }]}>
+        {atFinale ? (
+          <Text style={styles.hintText}>SWIPE DOWN TO CLOSE</Text>
+        ) : (
+          <>
+            <Text style={styles.hintText}>TAP TO TAKE ANOTHER STEP</Text>
+            {dismissY === 0 ? <ArrowDown color={colors.fog} size={10} style={{ opacity: 0.4, marginTop: 6 }} /> : null}
+          </>
+        )}
       </View>
     </Animated.View>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* CORRIDOR BACKDROP                                                  */
+/* CORRIDOR CANVAS                                                    */
 /* ------------------------------------------------------------------ */
 
-function CorridorBackdrop({ walkProgress }: { walkProgress: Animated.Value }) {
-  // Floor lines and far-wall fog. Lines pulse forward as you walk to suggest
-  // the corridor advancing.
+function CorridorCanvas({ steps, cameraZ }: { steps: StepKind[]; cameraZ: SharedValue<number> }) {
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient
-        colors={["#08070C", "#0A0810", "#0F0B17", "#080610"]}
-        locations={[0, 0.35, 0.7, 1]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
+    <Canvas style={StyleSheet.absoluteFill}>
+      {/* Sky / ceiling — warm muted gradient */}
+      <Rect x={0} y={0} width={SCREEN_W} height={HORIZON_Y}>
+        <SkiaLinearGradient
+          start={vec(0, 0)}
+          end={vec(0, HORIZON_Y)}
+          colors={["#0B0810", "#15101C", "#1F1622"]}
+          positions={[0, 0.55, 1]}
+        />
+      </Rect>
 
-      {/* Vanishing point glow at the horizon */}
-      <View style={styles.horizonGlow} />
+      {/* Floor — marble-like warm cream with reflection gradient */}
+      <Rect x={0} y={HORIZON_Y} width={SCREEN_W} height={SCREEN_H - HORIZON_Y}>
+        <SkiaLinearGradient
+          start={vec(0, HORIZON_Y)}
+          end={vec(0, SCREEN_H)}
+          colors={["#1F1622", "#0F0810", "#070409"]}
+          positions={[0, 0.4, 1]}
+        />
+      </Rect>
 
-      {/* Floor perspective lines */}
-      {[0, 1, 2, 3, 4].map((i) => {
-        const offset = walkProgress.interpolate({
-          inputRange: [i, i + 5],
-          outputRange: [0, 1],
-          extrapolate: "extend"
-        });
-        const translateY = offset.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, 180]
-        });
-        return (
-          <Animated.View
-            key={`floor-${i}`}
-            style={[
-              styles.floorLine,
-              {
-                top: SCREEN_H * 0.5 + i * 60,
-                opacity: 0.10 + i * 0.04,
-                transform: [{ translateY }]
-              }
-            ]}
+      {/* Floor reflective sheen — vertical band of light from horizon to viewer */}
+      <Rect x={SCREEN_W * 0.25} y={HORIZON_Y} width={SCREEN_W * 0.5} height={SCREEN_H - HORIZON_Y} opacity={0.18}>
+        <SkiaLinearGradient
+          start={vec(0, HORIZON_Y)}
+          end={vec(0, SCREEN_H)}
+          colors={["rgba(232,194,107,0.55)", "rgba(232,194,107,0)"]}
+        />
+      </Rect>
+
+      {/* Vanishing point glow at horizon */}
+      <Group>
+        <Rect x={0} y={HORIZON_Y - 60} width={SCREEN_W} height={140} opacity={0.55}>
+          <RadialGradient
+            c={vec(SCREEN_W / 2, HORIZON_Y)}
+            r={180}
+            colors={["#E8C26B", "rgba(232,194,107,0)"]}
+            positions={[0, 1]}
           />
-        );
-      })}
+        </Rect>
+      </Group>
 
-      {/* Left + right wall hint gradients */}
-      <LinearGradient
-        colors={["rgba(232,194,107,0.05)", "rgba(0,0,0,0)"]}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={[styles.wallHint, { left: 0 }]}
-      />
-      <LinearGradient
-        colors={["rgba(0,0,0,0)", "rgba(232,194,107,0.05)"]}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={[styles.wallHint, { right: 0 }]}
-      />
-    </View>
+      {/* Perspective floor lines — receding into vanishing point */}
+      <FloorLines cameraZ={cameraZ} />
+
+      {/* Atmospheric depth fog over the horizon band */}
+      <Rect x={0} y={HORIZON_Y - 80} width={SCREEN_W} height={160} opacity={0.45}>
+        <SkiaLinearGradient
+          start={vec(0, HORIZON_Y - 80)}
+          end={vec(0, HORIZON_Y + 80)}
+          colors={["rgba(15,8,16,0)", "rgba(20,12,24,0.6)", "rgba(15,8,16,0)"]}
+        />
+      </Rect>
+
+      {/* The memories themselves */}
+      {steps.map((step, i) => (
+        <CorridorItem key={step.id} step={step} z={i} cameraZ={cameraZ} />
+      ))}
+
+      {/* Soft vignette around the edges */}
+      <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H}>
+        <RadialGradient
+          c={vec(SCREEN_W / 2, SCREEN_H / 2)}
+          r={SCREEN_W * 0.85}
+          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
+          positions={[0, 0.6, 1]}
+        />
+      </Rect>
+    </Canvas>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* WALK ITEM VIEW                                                     */
+/* FLOOR LINES                                                        */
 /* ------------------------------------------------------------------ */
 
-function WalkItemView({ item, index, walkProgress }: { item: WalkItem; index: number; walkProgress: Animated.Value }) {
-  // distance < 0: approaching (item is ahead of camera, far in distance)
-  // distance = 0: at camera
-  // distance > 0: passing/passed (above and behind)
-  // We interpolate over distance ranges [-1, 0, 0.6].
-
-  const distance = Animated.subtract(walkProgress, index);
-
-  const scale = distance.interpolate({
-    inputRange: [-1.0, -0.2, 0, 0.6],
-    outputRange: [0.18, 0.82, 1.0, 1.55],
-    extrapolate: "clamp"
-  });
-
-  const opacity = distance.interpolate({
-    inputRange: [-1.0, -0.85, -0.05, 0.35, 0.6],
-    outputRange: [0, 1, 1, 1, 0],
-    extrapolate: "clamp"
-  });
-
-  const translateY = distance.interpolate({
-    inputRange: [-1.0, 0, 0.6],
-    outputRange: [-SCREEN_H * 0.18, 0, SCREEN_H * 0.55],
-    extrapolate: "clamp"
-  });
-
-  const side = index % 2 === 0 ? -1 : 1;
-  const translateX = distance.interpolate({
-    inputRange: [-1.0, 0, 0.6],
-    outputRange: [side * 60, 0, side * 80],
-    extrapolate: "clamp"
-  });
-
-  const rotateZ = distance.interpolate({
-    inputRange: [-1.0, 0, 0.6],
-    outputRange: [side * 5, 0, side * 9],
-    extrapolate: "clamp"
-  });
-
+function FloorLines({ cameraZ }: { cameraZ: SharedValue<number> }) {
+  const lines = [0, 1, 2, 3, 4, 5];
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.itemRoot,
-        {
-          opacity,
-          transform: [
-            { perspective: 1100 },
-            { translateY },
-            { translateX },
-            { scale },
-            { rotateZ: rotateZ.interpolate({ inputRange: [-9, 9], outputRange: ["-9deg", "9deg"] }) }
-          ]
-        }
-      ]}
-    >
-      <ItemCard item={item} />
-    </Animated.View>
+    <Group>
+      {lines.map((i) => (
+        <FloorLine key={i} lineIndex={i} cameraZ={cameraZ} />
+      ))}
+    </Group>
   );
 }
 
-function ItemCard({ item }: { item: WalkItem }) {
-  switch (item.kind) {
+function FloorLine({ lineIndex, cameraZ }: { lineIndex: number; cameraZ: SharedValue<number> }) {
+  // Each line lives at z = lineIndex - cameraZ fraction. As camera advances,
+  // distant lines scroll toward the viewer.
+  const offset = useDerivedValue(() => {
+    "worklet";
+    const z = (lineIndex - (cameraZ.value % 1)) * 0.5;
+    // Map z (0 = far, 1+ = near) onto a y position from HORIZON_Y to SCREEN_H
+    const t = 1 - 1 / (1 + z * 1.5);
+    return HORIZON_Y + t * (SCREEN_H - HORIZON_Y);
+  });
+  const opacity = useDerivedValue(() => {
+    "worklet";
+    const z = (lineIndex - (cameraZ.value % 1)) * 0.5;
+    const t = 1 - 1 / (1 + z * 1.5);
+    return Math.max(0, Math.min(1, 0.18 + t * 0.4));
+  });
+  const linePath = useDerivedValue(() => {
+    "worklet";
+    const z = (lineIndex - (cameraZ.value % 1)) * 0.5;
+    const t = 1 - 1 / (1 + z * 1.5);
+    const y = HORIZON_Y + t * (SCREEN_H - HORIZON_Y);
+    const halfWidth = SCREEN_W * 0.5 * (0.1 + t * 0.9);
+    const cx = SCREEN_W / 2;
+    const p = Skia.Path.Make();
+    p.moveTo(cx - halfWidth, y);
+    p.lineTo(cx + halfWidth, y);
+    return p;
+  });
+  void offset;
+  return (
+    <Path path={linePath} style="stroke" strokeWidth={0.8} color="#E8C26B" opacity={opacity} />
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* CORRIDOR ITEM                                                      */
+/* ------------------------------------------------------------------ */
+
+function CorridorItem({ step, z, cameraZ }: { step: StepKind; z: number; cameraZ: SharedValue<number> }) {
+  switch (step.kind) {
     case "title":
-      return <TitleCard title={item.title} subtitle={item.subtitle} />;
-    case "calendar":
-      return <CalendarCard start={item.start} end={item.end} />;
+      return <TitleItem step={step} z={z} cameraZ={cameraZ} />;
+    case "photo-wall":
+      return <PhotoWallItem step={step} z={z} cameraZ={cameraZ} />;
+    case "photo-portal":
+      return <PhotoPortalItem step={step} z={z} cameraZ={cameraZ} />;
     case "stat":
-      return <StatCard value={item.value} label={item.label} />;
-    case "people":
-      return <PeopleCard people={item.people} line={item.line} />;
-    case "photo":
-      return <PhotoCard photo={item.photo} caption={item.caption} date={item.date} author={item.author} />;
+      return <StatItem step={step} z={z} cameraZ={cameraZ} />;
     case "quote":
-      return <QuoteCard body={item.body} author={item.author} createdAt={item.createdAt} />;
-    case "reactions":
-      return <ReactionsCard emoji={item.emoji} count={item.count} />;
+      return <QuoteItem step={step} z={z} cameraZ={cameraZ} />;
+    case "names":
+      return <NamesItem step={step} z={z} cameraZ={cameraZ} />;
+    case "finale":
+      return <FinaleItem z={z} cameraZ={cameraZ} />;
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* INDIVIDUAL CARDS (rendered into the walkway, transformed by parent)*/
-/* ------------------------------------------------------------------ */
-
-function TitleCard({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <View style={[cards.base, cards.title]}>
-      <Text style={cards.titleKicker}>{subtitle}</Text>
-      <Text style={cards.titleText}>{title}</Text>
-    </View>
-  );
+/**
+ * Returns a depth descriptor for an item at world-z `z` given camera-z `cameraZ`.
+ * - distance: signed distance from camera (negative = ahead, positive = behind)
+ * - scale: perspective scale based on distance
+ * - blur: gpu blur radius based on how far ahead the item still is
+ * - opacity: fades from 0 (far ahead) to 1 (close) and back to 0 (passed)
+ * - yOffset: vertical offset to simulate item at a particular depth on the floor
+ */
+function useDepth(z: number, cameraZ: SharedValue<number>) {
+  const distance = useDerivedValue(() => z - cameraZ.value);
+  const scale = useDerivedValue(() => {
+    "worklet";
+    const d = z - cameraZ.value;
+    // perspective: items in the distance shrink, items at camera are 1.0, items behind grow large quickly
+    if (d >= 0) {
+      return 1 / (1 + d * 0.55);
+    }
+    return 1 / Math.max(0.001, 1 + d * 1.4);
+  });
+  const blur = useDerivedValue(() => {
+    "worklet";
+    const d = z - cameraZ.value;
+    if (d > 0.05) return Math.min(24, d * 12);
+    if (d < -0.5) return Math.min(20, -d * 14);
+    return 0;
+  });
+  const opacity = useDerivedValue(() => {
+    "worklet";
+    const d = z - cameraZ.value;
+    if (d > 3) return 0;
+    if (d > 0) return Math.max(0, 1 - d / 3);
+    if (d > -0.8) return 1;
+    if (d > -1.2) return Math.max(0, 1 - (-d - 0.8) / 0.4);
+    return 0;
+  });
+  return { distance, scale, blur, opacity };
 }
 
-function CalendarCard({ start, end }: { start: string; end: string }) {
-  const s = new Date(start);
-  const e = new Date(end);
-  const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear();
-  return (
-    <View style={[cards.base, cards.calendar]}>
-      <Text style={cards.calendarKicker}>KEPT BETWEEN</Text>
-      <View style={cards.calendarRow}>
-        <View style={cards.calendarPill}>
-          <Text style={cards.calendarPillMonth}>{MONTHS_SHORT[s.getMonth()]}</Text>
-          <Text style={cards.calendarPillDay}>{s.getDate()}</Text>
-        </View>
-        <Text style={cards.calendarArrow}>→</Text>
-        <View style={cards.calendarPill}>
-          <Text style={cards.calendarPillMonth}>{sameMonth ? "" : MONTHS_SHORT[e.getMonth()]}</Text>
-          <Text style={cards.calendarPillDay}>{e.getDate()}</Text>
-        </View>
-      </View>
-      <Text style={cards.calendarYear}>{s.getFullYear()}</Text>
-    </View>
-  );
-}
+/* ----- title ----- */
 
-function StatCard({ value, label }: { value: number; label: string }) {
+function TitleItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "title" }>; z: number; cameraZ: SharedValue<number> }) {
+  const { scale, blur, opacity } = useDepth(z, cameraZ);
+  const cy = useDerivedValue(() => SCREEN_H * 0.42 + (z - cameraZ.value) * 24);
+  const titleWidth = step.title.length * 16;
+  const x = useDerivedValue(() => SCREEN_W / 2 - (titleWidth * scale.value) / 2);
+  const fontSize = useDerivedValue(() => 36 * scale.value);
+  const dateWidth = step.date.length * 6;
+  const dateX = useDerivedValue(() => SCREEN_W / 2 - (dateWidth * scale.value) / 2);
+  const dateY = useDerivedValue(() => cy.value + 36 * scale.value);
   return (
-    <View style={[cards.base, cards.stat]}>
-      <Text style={cards.statValue}>{value}</Text>
-      <Text style={cards.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function PeopleCard({ people, line }: { people: RecapUser[]; line: string }) {
-  return (
-    <View style={[cards.base, cards.people]}>
-      <Text style={cards.peopleKicker}>CAST</Text>
-      <View style={cards.avatarStack}>
-        {people.slice(0, 4).map((p, i) => (
-          <View
-            key={p.id}
-            style={[
-              cards.avatarWrap,
-              { marginLeft: i === 0 ? 0 : -12, zIndex: 10 - i }
-            ]}
-          >
-            {p.avatarUrl ? (
-              <Image source={{ uri: p.avatarUrl }} style={cards.avatar} contentFit="cover" transition={250} />
-            ) : (
-              <View style={[cards.avatar, cards.avatarFallback]}>
-                <UserRound color={colors.muted} size={14} />
-              </View>
-            )}
-          </View>
-        ))}
-        {people.length > 4 ? (
-          <View style={[cards.avatarWrap, cards.avatarMore, { marginLeft: -12 }]}>
-            <Text style={cards.avatarMoreText}>+{people.length - 4}</Text>
-          </View>
-        ) : null}
-      </View>
-      <Text style={cards.peopleNames}>
-        {people.slice(0, 3).map((p) => p.displayName).join(", ")}
-      </Text>
-      <Text style={cards.peopleLine}>{line}</Text>
-    </View>
-  );
-}
-
-function PhotoCard({
-  photo,
-  caption,
-  date,
-  author
-}: {
-  photo: string;
-  caption: string | null;
-  date: string | null;
-  author: RecapUser | null;
-}) {
-  return (
-    <View style={[cards.base, cards.photo]}>
-      <Image source={{ uri: photo }} style={cards.photoImage} contentFit="cover" transition={250} />
-      <LinearGradient
-        colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.65)"]}
-        style={cards.photoScrim}
+    <Group opacity={opacity}>
+      <SkText x={dateX} y={cy} text={step.date} font={microFont} color="#E8C26B" />
+      <SkText x={x} y={useDerivedValue(() => cy.value + 28 * scale.value)} text={step.title} font={titleFont} color="#F5F1EA" />
+      {/* Underline rule */}
+      <Rect
+        x={useDerivedValue(() => SCREEN_W / 2 - 22)}
+        y={dateY}
+        width={44}
+        height={1}
+        color="#E8C26B"
+        opacity={0.55}
       />
-      <View style={cards.photoMeta}>
-        {date ? <Text style={cards.photoDate}>{formatLongDate(date).toUpperCase()}</Text> : null}
-        {caption ? <Text style={cards.photoCaption} numberOfLines={2}>"{caption}"</Text> : null}
-        {author ? (
-          <Text style={cards.photoAuthor}>
-            shot by <Text style={cards.photoAuthorName}>{author.displayName}</Text>
-          </Text>
-        ) : null}
-      </View>
-    </View>
+      <BlurMask blur={blur} style="normal" />
+    </Group>
   );
 }
 
-function QuoteCard({ body, author, createdAt }: { body: string; author: RecapUser | null; createdAt: string }) {
+/* ----- photo wall (becomes part of the corridor wall on left or right) ----- */
+
+function PhotoWallItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "photo-wall" }>; z: number; cameraZ: SharedValue<number> }) {
+  const image = useImage(step.url);
+  const { scale, blur, opacity } = useDepth(z, cameraZ);
+
+  const isLeft = step.side === "left";
+  const baseW = SCREEN_W * 0.62;
+  const baseH = SCREEN_H * 0.72;
+
+  const w = useDerivedValue(() => baseW * scale.value);
+  const h = useDerivedValue(() => baseH * scale.value);
+  const x = useDerivedValue(() => {
+    "worklet";
+    const sw = baseW * scale.value;
+    return isLeft ? -sw * 0.35 + (1 - scale.value) * 60 : SCREEN_W - sw * 0.65 - (1 - scale.value) * 60;
+  });
+  const y = useDerivedValue(() => SCREEN_H * 0.5 - (baseH * scale.value) / 2 + (z - cameraZ.value) * 18);
+
+  // Build the panel as a parallelogram so it reads like an angled wall.
+  const wallPath = useDerivedValue(() => {
+    "worklet";
+    const sw = w.value;
+    const sh = h.value;
+    const startX = x.value;
+    const startY = y.value;
+    const skew = isLeft ? -sw * 0.18 : sw * 0.18;
+    const path = Skia.Path.Make();
+    if (isLeft) {
+      path.moveTo(startX, startY + 30);
+      path.lineTo(startX + sw, startY);
+      path.lineTo(startX + sw, startY + sh);
+      path.lineTo(startX, startY + sh - 30);
+    } else {
+      path.moveTo(startX + skew, startY);
+      path.lineTo(startX + sw, startY + 30);
+      path.lineTo(startX + sw, startY + sh - 30);
+      path.lineTo(startX + skew, startY + sh);
+    }
+    path.close();
+    return path;
+  });
+
+  if (!image) return null;
   return (
-    <View style={[cards.base, cards.quote]}>
-      <Text style={cards.quoteMark}>"</Text>
-      <Text style={cards.quoteBody}>{body}</Text>
-      <View style={cards.quoteFooter}>
-        <View style={cards.quoteRule} />
-        {author ? <Text style={cards.quoteAuthor}>{author.displayName}</Text> : null}
-        <Text style={cards.quoteTime}>{formatLongDate(createdAt)} · {formatTime(createdAt)}</Text>
-      </View>
-    </View>
+    <Group opacity={opacity}>
+      {/* Photo masked to the angled wall */}
+      <Group clip={wallPath}>
+        <SkImage
+          image={image}
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          fit="cover"
+        />
+        {/* Cool color grade — pull saturation down a touch so it sits in the corridor */}
+        <Group blendMode="multiply">
+          <Rect x={x} y={y} width={w} height={h} color="#FFF6E6" opacity={0.18} />
+        </Group>
+        {/* Gradient overlay — darker at the edges so it feels like a wall lit from above */}
+        <Rect x={x} y={y} width={w} height={h} opacity={0.55}>
+          <SkiaLinearGradient
+            start={vec(0, 0)}
+            end={vec(0, SCREEN_H)}
+            colors={["rgba(8,6,12,0.0)", "rgba(8,6,12,0.85)"]}
+          />
+        </Rect>
+        {/* Bottom-up shadow to suggest the wall meeting the floor */}
+        <Rect x={x} y={useDerivedValue(() => y.value + h.value - 80 * scale.value)} width={w} height={80} opacity={0.7}>
+          <SkiaLinearGradient
+            start={vec(0, 0)}
+            end={vec(0, 80)}
+            colors={["rgba(8,6,12,0)", "rgba(8,6,12,0.95)"]}
+          />
+        </Rect>
+      </Group>
+
+      <BlurMask blur={blur} style="normal" />
+
+      {/* Caption + date as etched text near the bottom edge of the panel */}
+      {step.caption ? (
+        <CaptionText
+          text={`"${step.caption}"`}
+          x={useDerivedValue(() => x.value + 18)}
+          y={useDerivedValue(() => y.value + h.value - 36)}
+          scale={scale}
+        />
+      ) : null}
+      {step.date ? (
+        <CaptionText
+          text={formatLongDate(step.date).toUpperCase()}
+          x={useDerivedValue(() => x.value + 18)}
+          y={useDerivedValue(() => y.value + h.value - 14)}
+          scale={scale}
+          color="#E8C26B"
+          size={9}
+        />
+      ) : null}
+    </Group>
   );
 }
 
-function ReactionsCard({ emoji, count }: { emoji: string; count: number }) {
+/* ----- photo portal — a centered window suspended in the corridor ----- */
+
+function PhotoPortalItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "photo-portal" }>; z: number; cameraZ: SharedValue<number> }) {
+  const image = useImage(step.url);
+  const { scale, blur, opacity } = useDepth(z, cameraZ);
+
+  const baseW = SCREEN_W * 0.74;
+  const baseH = SCREEN_H * 0.46;
+
+  const w = useDerivedValue(() => baseW * scale.value);
+  const h = useDerivedValue(() => baseH * scale.value);
+  const x = useDerivedValue(() => SCREEN_W / 2 - w.value / 2);
+  const y = useDerivedValue(() => SCREEN_H * 0.38 - h.value / 2 + (z - cameraZ.value) * 22);
+
+  if (!image) return null;
+
   return (
-    <View style={[cards.base, cards.reactions]}>
-      <Text style={cards.reactionsEmoji}>{emoji}</Text>
-      <Text style={cards.reactionsCount}>{count}</Text>
-      <Text style={cards.reactionsLabel}>{count === 1 ? "REACTION" : "REACTIONS"}</Text>
-    </View>
+    <Group opacity={opacity}>
+      {/* Soft glow halo around the portal */}
+      <RoundedRect
+        x={useDerivedValue(() => x.value - 14)}
+        y={useDerivedValue(() => y.value - 14)}
+        width={useDerivedValue(() => w.value + 28)}
+        height={useDerivedValue(() => h.value + 28)}
+        r={26}
+        opacity={0.35}
+      >
+        <BlurMask blur={26} style="normal" />
+        <SkiaLinearGradient
+          start={vec(0, 0)}
+          end={vec(SCREEN_W, SCREEN_H)}
+          colors={["#E8C26B", "#9F7530"]}
+        />
+      </RoundedRect>
+
+      {/* The portal itself — masked image with rounded corners */}
+      <Group clip={useDerivedValue(() => {
+        "worklet";
+        const p = Skia.Path.Make();
+        p.addRRect({
+          rect: { x: x.value, y: y.value, width: w.value, height: h.value },
+          rx: 18,
+          ry: 18
+        });
+        return p;
+      })}>
+        <SkImage image={image} x={x} y={y} width={w} height={h} fit="cover" />
+        {/* Slight gold color cast */}
+        <Rect x={x} y={y} width={w} height={h} opacity={0.10}>
+          <SkiaLinearGradient
+            start={vec(0, 0)}
+            end={vec(0, SCREEN_H)}
+            colors={["rgba(252,234,176,0.4)", "rgba(120,80,30,0)"]}
+          />
+        </Rect>
+        {/* Bottom scrim for caption legibility */}
+        <Rect x={x} y={useDerivedValue(() => y.value + h.value - 90 * scale.value)} width={w} height={90} opacity={0.7}>
+          <SkiaLinearGradient
+            start={vec(0, 0)}
+            end={vec(0, 90)}
+            colors={["rgba(8,6,12,0)", "rgba(8,6,12,0.95)"]}
+          />
+        </Rect>
+      </Group>
+
+      <BlurMask blur={blur} style="normal" />
+
+      {step.caption ? (
+        <CaptionText
+          text={`"${step.caption}"`}
+          x={useDerivedValue(() => x.value + 24)}
+          y={useDerivedValue(() => y.value + h.value - 22)}
+          scale={scale}
+          size={14}
+        />
+      ) : null}
+    </Group>
   );
+}
+
+/* ----- stat — minimal floating numeral suspended in space ----- */
+
+function StatItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "stat" }>; z: number; cameraZ: SharedValue<number> }) {
+  const { scale, blur, opacity } = useDepth(z, cameraZ);
+  const valueText = String(step.value);
+  const valueWidth = valueText.length * 56;
+  const x = useDerivedValue(() => SCREEN_W / 2 - (valueWidth * scale.value) / 2);
+  const y = useDerivedValue(() => SCREEN_H * 0.48 + (z - cameraZ.value) * 18);
+  const labelWidth = step.label.length * 7;
+  const labelX = useDerivedValue(() => SCREEN_W / 2 - (labelWidth * scale.value) / 2);
+  const labelY = useDerivedValue(() => y.value + 32);
+
+  return (
+    <Group opacity={opacity}>
+      <SkText x={x} y={y} text={valueText} font={bigNumberFont} color="#F5F1EA" />
+      <SkText x={labelX} y={labelY} text={step.label} font={microFont} color="#E8C26B" />
+      <BlurMask blur={blur} style="normal" />
+    </Group>
+  );
+}
+
+/* ----- quote — a printed line attributed to the speaker ----- */
+
+function QuoteItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "quote" }>; z: number; cameraZ: SharedValue<number> }) {
+  const { scale, blur, opacity } = useDepth(z, cameraZ);
+  const cy = useDerivedValue(() => SCREEN_H * 0.42 + (z - cameraZ.value) * 18);
+
+  // Wrap the body to ~28 chars per line; we render up to 4 lines.
+  const lines = useMemo(() => wrapText(step.body, 28).slice(0, 4), [step.body]);
+
+  return (
+    <Group opacity={opacity}>
+      {lines.map((line, i) => {
+        const lineWidth = line.length * 11;
+        const lx = useDerivedValue(() => SCREEN_W / 2 - (lineWidth * scale.value) / 2);
+        const ly = useDerivedValue(() => cy.value + i * 28 * scale.value);
+        return <SkText key={i} x={lx} y={ly} text={line} font={titleFont} color="#F5F1EA" />;
+      })}
+      <SkText
+        x={useDerivedValue(() => SCREEN_W / 2 - (step.authorName.length * 4))}
+        y={useDerivedValue(() => cy.value + (lines.length + 1) * 28)}
+        text={`— ${step.authorName.toUpperCase()}  ·  ${formatLongDate(step.createdAt).toUpperCase()}`}
+        font={microFont}
+        color="#E8C26B"
+      />
+      <BlurMask blur={blur} style="normal" />
+    </Group>
+  );
+}
+
+/* ----- names — list of contributors, set like a film credit ----- */
+
+function NamesItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "names" }>; z: number; cameraZ: SharedValue<number> }) {
+  const { blur, opacity } = useDepth(z, cameraZ);
+  const lines = step.people.map((p) => p.displayName);
+  return (
+    <Group opacity={opacity}>
+      <SkText
+        x={SCREEN_W / 2 - 18}
+        y={SCREEN_H * 0.34}
+        text="CAST"
+        font={microFont}
+        color="#E8C26B"
+      />
+      {lines.map((line, i) => (
+        <SkText
+          key={i}
+          x={SCREEN_W / 2 - line.length * 8}
+          y={SCREEN_H * 0.42 + i * 32}
+          text={line}
+          font={titleFont}
+          color="#F5F1EA"
+        />
+      ))}
+      <SkText
+        x={SCREEN_W / 2 - step.line.length * 3.5}
+        y={SCREEN_H * 0.42 + lines.length * 32 + 18}
+        text={step.line}
+        font={bodyFont}
+        color="#9C95A0"
+      />
+      <BlurMask blur={blur} style="normal" />
+    </Group>
+  );
+}
+
+/* ----- finale — a single seamless composition ----- */
+
+function FinaleItem({ z, cameraZ }: { z: number; cameraZ: SharedValue<number> }) {
+  // The finale is rendered as a separate canvas layer below for full-screen composition.
+  // Here we just mark our depth presence (effectively invisible while approaching).
+  const { opacity } = useDepth(z, cameraZ);
+  void opacity;
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
-/* FINAL COLLAGE (arrives once walkway completes)                     */
+/* FINALE COMPOSITION                                                 */
 /* ------------------------------------------------------------------ */
 
-const COLLAGE_SLOTS: Array<{ x: number; y: number; rot: number; tiltX: number; tiltY: number; delay: number }> = [
-  { x: -90, y: -190, rot: -8, tiltX: 6, tiltY: -4, delay: 200 },
-  { x: 100, y: -170, rot: 7, tiltX: 5, tiltY: 4, delay: 320 },
-  { x: -130, y: -40, rot: -14, tiltX: 4, tiltY: -6, delay: 460 },
-  { x: 120, y: -10, rot: 12, tiltX: 4, tiltY: 6, delay: 600 },
-  { x: -100, y: 160, rot: -10, tiltX: -4, tiltY: -5, delay: 760 },
-  { x: 110, y: 180, rot: 9, tiltX: -5, tiltY: 5, delay: 900 },
-  { x: -50, y: 240, rot: -4, tiltX: -6, tiltY: -2, delay: 1040 },
-  { x: 70, y: -250, rot: 14, tiltX: 7, tiltY: 3, delay: 1180 }
+interface FinaleSlot {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  rotate: number;
+  /** mask shape kind */
+  shape: "ellipse" | "blob" | "tall" | "wide" | "skew";
+}
+
+const FINALE_SLOTS: FinaleSlot[] = [
+  // Anchor — big blob on the left, photo 0
+  { cx: SCREEN_W * 0.32, cy: SCREEN_H * 0.38, rx: SCREEN_W * 0.46, ry: SCREEN_H * 0.30, rotate: -6, shape: "blob" },
+  // Top right — tall portrait
+  { cx: SCREEN_W * 0.76, cy: SCREEN_H * 0.26, rx: SCREEN_W * 0.30, ry: SCREEN_H * 0.22, rotate: 4, shape: "tall" },
+  // Bottom right — wide
+  { cx: SCREEN_W * 0.72, cy: SCREEN_H * 0.66, rx: SCREEN_W * 0.36, ry: SCREEN_H * 0.20, rotate: -3, shape: "wide" },
+  // Bottom left — skewed
+  { cx: SCREEN_W * 0.30, cy: SCREEN_H * 0.78, rx: SCREEN_W * 0.32, ry: SCREEN_H * 0.15, rotate: 5, shape: "skew" },
+  // Top center — ellipse accent
+  { cx: SCREEN_W * 0.54, cy: SCREEN_H * 0.18, rx: SCREEN_W * 0.20, ry: SCREEN_H * 0.10, rotate: 2, shape: "ellipse" },
+  // Mid blob spanning the gap
+  { cx: SCREEN_W * 0.52, cy: SCREEN_H * 0.52, rx: SCREEN_W * 0.24, ry: SCREEN_H * 0.18, rotate: -8, shape: "blob" }
 ];
 
-function FinalCollage({
-  recap,
-  title,
-  onClose,
-  onShare
-}: {
-  recap: RecapResponse;
-  title: string;
-  onClose: () => void;
-  onShare: () => void;
-}) {
-  void onClose;
-  void onShare;
-  const fadeIn = useRef(new Animated.Value(0)).current;
-  const cardScale = useRef(new Animated.Value(0.4)).current;
-  const cardOpacity = useRef(new Animated.Value(0)).current;
-  const footerOpacity = useRef(new Animated.Value(0)).current;
-  const breathe = useRef(new Animated.Value(0)).current;
-  const reactionFeed = useRef<FloatingReaction[]>([]).current;
-  const [feedTick, setFeedTick] = useState<FloatingReaction[]>([]);
-
+function FinaleCanvas({ recap, title }: { recap: RecapResponse; title: string }) {
+  const fadeIn = useSharedValue(0);
   useEffect(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-    Animated.timing(fadeIn, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-    Animated.sequence([
-      Animated.delay(220),
-      Animated.parallel([
-        Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 6, tension: 80 }),
-        Animated.timing(cardOpacity, { toValue: 1, duration: 700, useNativeDriver: true })
-      ])
-    ]).start();
-    Animated.sequence([
-      Animated.delay(1500),
-      Animated.timing(footerOpacity, { toValue: 1, duration: 700, useNativeDriver: true })
-    ]).start();
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathe, { toValue: 1, duration: 5400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(breathe, { toValue: 0, duration: 5400, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
-      ])
-    ).start();
-    // Celebratory emoji shower if there's a top emoji
-    if (recap.topEmoji) {
-      for (let i = 0; i < 12; i += 1) {
-        setTimeout(() => {
-          reactionFeed.push({ id: `c-${Date.now()}-${i}`, emoji: recap.topEmoji! });
-          setFeedTick([...reactionFeed]);
-        }, 300 + i * 280);
-      }
-    }
-  }, [fadeIn, cardScale, cardOpacity, footerOpacity, breathe, recap.topEmoji, reactionFeed]);
+    fadeIn.value = withTiming(1, { duration: 1200, easing: Easing.bezier(0.42, 0, 0.18, 1) });
+  }, [fadeIn]);
 
-  const start = new Date(recap.dateRange.start);
-  const end = new Date(recap.dateRange.end);
-  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
-  const monthLabel = sameMonth
-    ? MONTHS_SHORT[start.getMonth()]
-    : `${MONTHS_SHORT[start.getMonth()]} – ${MONTHS_SHORT[end.getMonth()]}`;
-  const dayLabel = sameMonth ? `${start.getDate()}–${end.getDate()}` : `${start.getDate()} · ${end.getDate()}`;
-  const pileDrift = breathe.interpolate({ inputRange: [0, 1], outputRange: [-3, 3] });
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: fadeIn.value }));
+
+  const photos = recap.highlights.slice(0, FINALE_SLOTS.length);
+  const dateLabel = formatRange(recap.dateRange.start, recap.dateRange.end).toUpperCase();
 
   return (
-    <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: fadeIn }]}>
-      <LinearGradient
-        colors={["#0F0D14", "#0A080F", "#181020"]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
+    <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]} pointerEvents="none">
+      <Canvas style={StyleSheet.absoluteFill}>
+        {/* Backdrop — warm dark plum, edges fade to ink */}
+        <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H}>
+          <RadialGradient
+            c={vec(SCREEN_W / 2, SCREEN_H * 0.45)}
+            r={SCREEN_W * 1.1}
+            colors={["#241726", "#100A12", "#070409"]}
+            positions={[0, 0.6, 1]}
+          />
+        </Rect>
 
-      <Animated.View style={[collage.stage, { transform: [{ translateY: pileDrift }] }]}>
-        {recap.highlights.slice(0, COLLAGE_SLOTS.length).map((photo, i) => (
-          <CollagePhoto key={photo.id} photo={photo} slot={COLLAGE_SLOTS[i]} />
-        ))}
+        {/* The interlocking composition — each photo masked into an organic
+            shape, blended together. No frames, no borders. */}
+        <Group>
+          {photos.map((photo, i) => (
+            <FinalePhoto key={photo.id} url={photo.url} slot={FINALE_SLOTS[i]} index={i} />
+          ))}
+        </Group>
 
-        <Animated.View
-          style={[
-            collage.card,
-            {
-              opacity: cardOpacity,
-              transform: [
-                { scale: cardScale },
-                { perspective: 1000 },
-                { rotateX: "2deg" },
-                { rotate: "-1.5deg" }
-              ]
-            }
-          ]}
-        >
-          <Text style={collage.cardKicker}>TIME CAPSULE</Text>
-          <Text style={collage.cardTitle}>{title}</Text>
-          <Text style={collage.cardMonth}>{monthLabel}</Text>
-          <Text style={collage.cardDay}>{dayLabel}</Text>
-          <Text style={collage.cardYear}>{start.getFullYear()}</Text>
-          {recap.locationName ? <Text style={collage.cardPlace}>{recap.locationName}</Text> : null}
-        </Animated.View>
-      </Animated.View>
+        {/* Bottom-to-top scrim for legibility under the title block */}
+        <Rect x={0} y={SCREEN_H - 280} width={SCREEN_W} height={280}>
+          <SkiaLinearGradient
+            start={vec(0, 0)}
+            end={vec(0, 280)}
+            colors={["rgba(7,4,9,0)", "rgba(7,4,9,0.92)"]}
+          />
+        </Rect>
+      </Canvas>
 
-      <Animated.View pointerEvents="none" style={[collage.footer, { opacity: footerOpacity }]}>
-        <Sparkles color={colors.gold} size={10} />
-        <Text style={collage.footerText}>
-          GENERATED {formatLongDate(recap.generatedAt).toUpperCase()} · {formatTime(recap.generatedAt)}
-        </Text>
-      </Animated.View>
-
-      <FloatingReactions feed={feedTick} />
+      {/* Title block sits in normal RN so we get full typography control */}
+      <View style={finale.titleBlock}>
+        <View style={finale.dateRow}>
+          <View style={finale.dateRule} />
+          <Text style={finale.dateText}>{dateLabel}</Text>
+          <View style={finale.dateRule} />
+        </View>
+        <Text style={finale.title}>{title}</Text>
+        {recap.locationName ? <Text style={finale.location}>{recap.locationName.toUpperCase()}</Text> : null}
+        <Text style={finale.footer}>{recap.stats.memories} MEMORIES · {recap.contributorList.length} {recap.contributorList.length === 1 ? "PERSON" : "PEOPLE"} · {recap.stats.daysSpan} {recap.stats.daysSpan === 1 ? "DAY" : "DAYS"}</Text>
+      </View>
     </Animated.View>
   );
 }
 
-function CollagePhoto({ photo, slot }: { photo: RecapHighlight; slot: typeof COLLAGE_SLOTS[number] }) {
-  const value = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.sequence([
-      Animated.delay(slot.delay),
-      Animated.spring(value, { toValue: 1, useNativeDriver: true, friction: 7, tension: 70 })
-    ]).start();
-  }, [value, slot.delay]);
-  const opacity = value;
-  const scale = value.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
-  const translateY = value.interpolate({ inputRange: [0, 1], outputRange: [40, 0] });
-  return (
-    <Animated.View
-      style={[
-        collage.polaroid,
-        {
-          left: SCREEN_W / 2 + slot.x - 64,
-          top: SCREEN_H / 2 + slot.y - 78,
-          opacity,
-          transform: [
-            { scale },
-            { translateY },
-            { perspective: 1000 },
-            { rotate: `${slot.rot}deg` },
-            { rotateX: `${slot.tiltX}deg` },
-            { rotateY: `${slot.tiltY}deg` }
-          ]
+function FinalePhoto({ url, slot, index }: { url: string; slot: FinaleSlot; index: number }) {
+  const image = useImage(url);
+  if (!image) return null;
+
+  // Build the mask path based on shape kind
+  const maskPath = useMemo(() => {
+    const p = Skia.Path.Make();
+    switch (slot.shape) {
+      case "blob": {
+        // Asymmetric blob via several bezier curves around the center
+        const cx = slot.cx;
+        const cy = slot.cy;
+        const rx = slot.rx;
+        const ry = slot.ry;
+        // 6-point asymmetric blob
+        const points = [
+          { ang: 0, r: 1.05 },
+          { ang: 60, r: 0.92 },
+          { ang: 130, r: 1.08 },
+          { ang: 190, r: 0.94 },
+          { ang: 250, r: 1.06 },
+          { ang: 310, r: 0.96 }
+        ];
+        const xy = points.map(({ ang, r }) => ({
+          x: cx + Math.cos((ang * Math.PI) / 180) * rx * r,
+          y: cy + Math.sin((ang * Math.PI) / 180) * ry * r
+        }));
+        p.moveTo(xy[0].x, xy[0].y);
+        for (let i = 0; i < xy.length; i += 1) {
+          const next = xy[(i + 1) % xy.length];
+          const mx = (xy[i].x + next.x) / 2;
+          const my = (xy[i].y + next.y) / 2;
+          p.quadTo(xy[i].x, xy[i].y, mx, my);
         }
+        p.close();
+        break;
+      }
+      case "tall": {
+        const x = slot.cx - slot.rx;
+        const y = slot.cy - slot.ry;
+        p.addRRect({ rect: { x, y, width: slot.rx * 2, height: slot.ry * 2 }, rx: slot.rx, ry: slot.rx });
+        break;
+      }
+      case "wide": {
+        const x = slot.cx - slot.rx;
+        const y = slot.cy - slot.ry;
+        p.addRRect({ rect: { x, y, width: slot.rx * 2, height: slot.ry * 2 }, rx: 30, ry: 30 });
+        break;
+      }
+      case "ellipse": {
+        p.addOval({ x: slot.cx - slot.rx, y: slot.cy - slot.ry, width: slot.rx * 2, height: slot.ry * 2 });
+        break;
+      }
+      case "skew": {
+        // Parallelogram
+        const x = slot.cx - slot.rx;
+        const y = slot.cy - slot.ry;
+        const skew = slot.rx * 0.25;
+        p.moveTo(x + skew, y);
+        p.lineTo(x + slot.rx * 2, y);
+        p.lineTo(x + slot.rx * 2 - skew, y + slot.ry * 2);
+        p.lineTo(x, y + slot.ry * 2);
+        p.close();
+        break;
+      }
+    }
+    return p;
+  }, [slot]);
+
+  const imageX = slot.cx - slot.rx * 1.1;
+  const imageY = slot.cy - slot.ry * 1.1;
+  const imageW = slot.rx * 2.2;
+  const imageH = slot.ry * 2.2;
+
+  return (
+    <Group
+      clip={maskPath}
+      transform={[
+        { translateX: slot.cx },
+        { translateY: slot.cy },
+        { rotate: (slot.rotate * Math.PI) / 180 },
+        { translateX: -slot.cx },
+        { translateY: -slot.cy }
       ]}
     >
-      <Image source={{ uri: photo.url }} style={collage.polaroidImage} contentFit="cover" transition={250} />
-      {photo.caption ? <Text numberOfLines={1} style={collage.polaroidCaption}>{photo.caption}</Text> : null}
-    </Animated.View>
+      <SkImage image={image} x={imageX} y={imageY} width={imageW} height={imageH} fit="cover" />
+      {/* Warm color cast tinting them together */}
+      <Group blendMode="multiply">
+        <Rect x={imageX} y={imageY} width={imageW} height={imageH} opacity={0.18}>
+          <SkiaLinearGradient
+            start={vec(0, 0)}
+            end={vec(0, imageH)}
+            colors={index % 2 === 0 ? ["#F4D3A0", "#7A4E26"] : ["#E6C9A8", "#604838"]}
+          />
+        </Rect>
+      </Group>
+      {/* Edge feather — a dark vignette around each masked shape so they
+          merge into the backdrop and into each other */}
+      <Rect x={imageX} y={imageY} width={imageW} height={imageH} opacity={0.35}>
+        <RadialGradient
+          c={vec(slot.cx, slot.cy)}
+          r={Math.max(slot.rx, slot.ry) * 1.1}
+          colors={["rgba(0,0,0,0)", "rgba(7,4,9,0.85)"]}
+          positions={[0.55, 1]}
+        />
+      </Rect>
+    </Group>
   );
+}
+
+const finale = StyleSheet.create({
+  titleBlock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 70,
+    alignItems: "center",
+    paddingHorizontal: 24,
+    gap: 8
+  },
+  dateRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  dateRule: { width: 18, height: 1, backgroundColor: "#E8C26B", opacity: 0.6 },
+  dateText: { fontSize: 10, color: "#E8C26B", letterSpacing: 3, fontWeight: "700" },
+  title: { fontSize: 34, color: "#F5F1EA", fontWeight: "800", letterSpacing: -0.8, textAlign: "center" },
+  location: { fontSize: 10, color: "#E8C26B", letterSpacing: 3, fontWeight: "700", marginTop: 4 },
+  footer: { fontSize: 9, color: "#9C95A0", letterSpacing: 2.4, fontWeight: "700", marginTop: 14 }
+});
+
+/* ------------------------------------------------------------------ */
+/* CAPTION / TEXT HELPERS                                             */
+/* ------------------------------------------------------------------ */
+
+function CaptionText({
+  text,
+  x,
+  y,
+  scale,
+  color = "#F5F1EA",
+  size = 12
+}: {
+  text: string;
+  x: SharedValue<number>;
+  y: SharedValue<number>;
+  scale: SharedValue<number>;
+  color?: string;
+  size?: number;
+}) {
+  // Skia doesn't reflow text — we just render at a fixed size with depth-aware opacity.
+  const font = useMemo(
+    () => matchFont({ fontFamily: "Helvetica", fontSize: size, fontWeight: "600" } as never),
+    [size]
+  );
+  const visible = useDerivedValue(() => (scale.value > 0.4 ? 1 : Math.max(0, (scale.value - 0.2) / 0.2)));
+  return <SkText x={x} y={y} text={text} font={font} color={color} opacity={visible} />;
+}
+
+function wrapText(text: string, maxChars: number): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = "";
+  for (const w of words) {
+    if ((current + " " + w).trim().length > maxChars) {
+      if (current) lines.push(current);
+      current = w;
+    } else {
+      current = (current ? current + " " : "") + w;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+/* ------------------------------------------------------------------ */
+/* STEP BUILDER                                                       */
+/* ------------------------------------------------------------------ */
+
+function buildSteps(recap: RecapResponse, title: string): StepKind[] {
+  const steps: StepKind[] = [];
+  steps.push({
+    id: "title",
+    kind: "title",
+    title: title.toUpperCase(),
+    date: formatRange(recap.dateRange.start, recap.dateRange.end).toUpperCase()
+  });
+
+  if (recap.contributorList.length > 1) {
+    steps.push({
+      id: "names",
+      kind: "names",
+      people: recap.contributorList.slice(0, 5),
+      line: `${recap.contributorList.length} hands held this one`
+    });
+  }
+
+  steps.push({
+    id: "stat-memories",
+    kind: "stat",
+    value: recap.stats.memories,
+    label: recap.stats.memories === 1 ? "MEMORY" : "MEMORIES"
+  });
+
+  recap.highlights.slice(0, 3).forEach((h, i) => {
+    steps.push(
+      i % 2 === 0
+        ? {
+            id: `wall-${h.id}`,
+            kind: "photo-wall",
+            url: h.url,
+            caption: h.caption,
+            date: h.capturedAt,
+            side: i % 4 === 0 ? "left" : "right"
+          }
+        : {
+            id: `portal-${h.id}`,
+            kind: "photo-portal",
+            url: h.url,
+            caption: h.caption
+          }
+    );
+  });
+
+  steps.push({
+    id: "stat-days",
+    kind: "stat",
+    value: recap.stats.daysSpan,
+    label: recap.stats.daysSpan === 1 ? "DAY" : "DAYS"
+  });
+
+  if (recap.topComment) {
+    steps.push({
+      id: "quote",
+      kind: "quote",
+      body: recap.topComment.body,
+      authorName: recap.topComment.author?.displayName ?? "Anon",
+      createdAt: recap.topComment.createdAt
+    });
+  }
+
+  if (recap.highlights[3]) {
+    const h = recap.highlights[3];
+    steps.push({
+      id: `wall2-${h.id}`,
+      kind: "photo-wall",
+      url: h.url,
+      caption: h.caption,
+      date: h.capturedAt,
+      side: "left"
+    });
+  }
+
+  steps.push({ id: "finale", kind: "finale" });
+  return steps;
+}
+
+function formatRange(start: string, end: string) {
+  const s = new Date(start);
+  const e = new Date(end);
+  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+    return `${MONTHS_SHORT[s.getMonth()]} ${s.getDate()} – ${e.getDate()}, ${s.getFullYear()}`;
+  }
+  if (s.getFullYear() === e.getFullYear()) {
+    return `${MONTHS_SHORT[s.getMonth()]} ${s.getDate()} – ${MONTHS_SHORT[e.getMonth()]} ${e.getDate()}, ${s.getFullYear()}`;
+  }
+  return `${MONTHS_SHORT[s.getMonth()]} ${s.getDate()}, ${s.getFullYear()} – ${MONTHS_SHORT[e.getMonth()]} ${e.getDate()}, ${e.getFullYear()}`;
 }
 
 /* ------------------------------------------------------------------ */
 /* STYLES                                                             */
 /* ------------------------------------------------------------------ */
 
-const ITEM_W = 280;
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.ink },
+  root: { flex: 1, backgroundColor: "#080610" },
   errorOverlay: { position: "absolute", left: 0, right: 0, bottom: 60, alignItems: "center" },
-  errorText: { ...type.body, color: "#5F574B" },
-  progressRow: { position: "absolute", left: 12, right: 12, flexDirection: "row", gap: 4 },
-  progressTrack: { flex: 1, height: 2.5, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.18)", overflow: "hidden" },
-  progressFill: { height: "100%", backgroundColor: colors.fog },
-  topBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  topRight: { flexDirection: "row", gap: 8 },
-  recapBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radii.pill, backgroundColor: colors.gold },
-  recapBadgeText: { ...type.micro, color: colors.ink, letterSpacing: 1.4 },
-  iconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(11,10,16,0.55)", borderWidth: 1, borderColor: colors.line },
-  tapZone: { position: "absolute", top: 130, bottom: 130 },
-  pauseBadge: { position: "absolute", top: SCREEN_H / 2 - 18, alignSelf: "center", width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(11,10,16,0.65)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.line },
-  dismissHint: { position: "absolute", alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 4 },
-  dismissText: { ...type.micro, color: colors.fog, letterSpacing: 1.2 },
+  errorText: { color: "#5F4923", fontSize: 14 },
 
-  // Item positioning
-  itemRoot: {
+  topBar: {
     position: "absolute",
-    top: SCREEN_H / 2 - 160,
-    left: SCREEN_W / 2 - ITEM_W / 2,
-    width: ITEM_W
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  topBarRight: { flexDirection: "row", gap: 8 },
+  recapBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(232,194,107,0.45)",
+    backgroundColor: "rgba(11,10,16,0.55)"
+  },
+  recapBadgeDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#E8C26B" },
+  recapBadgeText: { fontSize: 9, color: "#F5F1EA", letterSpacing: 1.6, fontWeight: "700" },
+  iconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(11,10,16,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)"
   },
 
-  // Corridor backdrop
-  horizonGlow: {
+  stepColumn: {
     position: "absolute",
-    top: SCREEN_H * 0.25,
-    left: SCREEN_W / 2 - 120,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: colors.gold,
-    opacity: 0.10
+    right: 14,
+    flexDirection: "column",
+    gap: 5,
+    alignItems: "center"
   },
-  floorLine: {
-    position: "absolute",
-    left: SCREEN_W * 0.18,
-    right: SCREEN_W * 0.18,
-    height: 1,
-    backgroundColor: "rgba(232,194,107,0.40)"
-  },
-  wallHint: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 90
+  stepPip: { width: 2, height: 14, borderRadius: 1 },
+
+  tapZone: { position: "absolute", top: 80, bottom: 100 },
+
+  bottomHint: { position: "absolute", left: 0, right: 0, alignItems: "center" },
+  hintText: {
+    fontSize: 9,
+    color: "#F5F1EA",
+    letterSpacing: 2.4,
+    fontWeight: "700",
+    opacity: 0.55
   }
 });
 
-const cards = StyleSheet.create({
-  base: {
-    width: ITEM_W,
-    borderRadius: radii.lg,
-    padding: 22,
-    shadowColor: "#000",
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 18 }
-  },
-
-  // Title
-  title: { backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: colors.lineBright, alignItems: "center", gap: 10, paddingVertical: 36 },
-  titleKicker: { fontSize: 10, color: colors.gold, letterSpacing: 3, fontWeight: "800" },
-  titleText: { fontSize: 30, lineHeight: 34, color: colors.fog, fontWeight: "800", textAlign: "center", letterSpacing: -0.6 },
-
-  // Calendar
-  calendar: { backgroundColor: "rgba(232,194,107,0.07)", borderWidth: 1, borderColor: "rgba(232,194,107,0.35)", alignItems: "center", gap: 10 },
-  calendarKicker: { fontSize: 9, color: colors.muted, letterSpacing: 3, fontWeight: "700" },
-  calendarRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
-  calendarPill: { alignItems: "center", paddingVertical: 10, paddingHorizontal: 18, borderRadius: radii.md, borderWidth: 1, borderColor: "rgba(232,194,107,0.40)", backgroundColor: "rgba(232,194,107,0.06)", minWidth: 72 },
-  calendarPillMonth: { fontSize: 10, color: colors.gold, letterSpacing: 2 },
-  calendarPillDay: { fontSize: 36, lineHeight: 40, fontWeight: "800", color: colors.fog, fontVariant: ["tabular-nums"] },
-  calendarArrow: { fontSize: 24, color: colors.gold, opacity: 0.55 },
-  calendarYear: { fontSize: 16, color: colors.fog, letterSpacing: 4, opacity: 0.65, fontWeight: "300", marginTop: 6 },
-
-  // Stat
-  stat: { backgroundColor: "rgba(78,46,86,0.18)", borderWidth: 1, borderColor: "rgba(232,194,107,0.18)", alignItems: "center", paddingVertical: 38 },
-  statValue: { fontSize: 110, lineHeight: 114, color: colors.fog, fontWeight: "800", fontVariant: ["tabular-nums"], letterSpacing: -4 },
-  statLabel: { fontSize: 11, color: colors.gold, letterSpacing: 3.6, fontWeight: "700", marginTop: 6 },
-
-  // People
-  people: { backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: colors.line, alignItems: "center", gap: 10 },
-  peopleKicker: { fontSize: 10, color: colors.muted, letterSpacing: 3, fontWeight: "700" },
-  avatarStack: { flexDirection: "row", marginTop: 4 },
-  avatarWrap: { width: 44, height: 44, borderRadius: 22, padding: 2, backgroundColor: colors.ink },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.dusk },
-  avatarFallback: { alignItems: "center", justifyContent: "center" },
-  avatarMore: { backgroundColor: colors.fog, alignItems: "center", justifyContent: "center" },
-  avatarMoreText: { fontSize: 11, color: colors.ink, fontWeight: "800" },
-  peopleNames: { fontSize: 16, color: colors.fog, fontWeight: "700", textAlign: "center" },
-  peopleLine: { fontSize: 12, color: colors.muted, fontStyle: "italic", textAlign: "center", marginTop: 2 },
-
-  // Photo
-  photo: { backgroundColor: colors.dusk, padding: 0, overflow: "hidden", height: 360 },
-  photoImage: { ...StyleSheet.absoluteFillObject },
-  photoScrim: { position: "absolute", left: 0, right: 0, bottom: 0, height: 200 },
-  photoMeta: { position: "absolute", left: 18, right: 18, bottom: 18, gap: 8 },
-  photoDate: { fontSize: 10, color: colors.gold, letterSpacing: 2.4, fontWeight: "800" },
-  photoCaption: { fontSize: 18, lineHeight: 22, color: colors.fog, fontWeight: "700", fontStyle: "italic" },
-  photoAuthor: { fontSize: 11, color: colors.fog, opacity: 0.78, letterSpacing: 0.2, marginTop: 2 },
-  photoAuthorName: { color: colors.gold, fontWeight: "700" },
-
-  // Quote
-  quote: { backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: colors.line, gap: 6 },
-  quoteMark: { fontSize: 64, lineHeight: 54, color: colors.gold, fontWeight: "800" },
-  quoteBody: { fontSize: 20, lineHeight: 26, color: colors.fog, fontWeight: "600", fontStyle: "italic", letterSpacing: -0.2, marginTop: -4 },
-  quoteFooter: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap" },
-  quoteRule: { width: 18, height: 1, backgroundColor: colors.gold },
-  quoteAuthor: { fontSize: 13, color: colors.fog, fontWeight: "700" },
-  quoteTime: { fontSize: 10, color: colors.muted, letterSpacing: 1.2 },
-
-  // Reactions
-  reactions: { backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(232,194,107,0.25)", alignItems: "center", paddingVertical: 32, gap: 6 },
-  reactionsEmoji: { fontSize: 90 },
-  reactionsCount: { fontSize: 56, lineHeight: 58, fontWeight: "800", color: colors.fog, fontVariant: ["tabular-nums"], letterSpacing: -2 },
-  reactionsLabel: { fontSize: 10, color: colors.gold, letterSpacing: 3, fontWeight: "700" }
-});
-
-const collage = StyleSheet.create({
-  stage: { flex: 1, alignItems: "center", justifyContent: "center" },
-  card: {
-    width: 200,
-    height: 264,
-    backgroundColor: colors.fog,
-    borderRadius: 6,
-    paddingHorizontal: 16,
-    paddingTop: 22,
-    paddingBottom: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.55,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
-    borderWidth: 1,
-    borderColor: "rgba(11,10,16,0.06)"
-  },
-  cardKicker: { fontSize: 10, color: colors.gold, letterSpacing: 2.6, fontWeight: "800" },
-  cardTitle: { fontSize: 18, color: colors.ink, fontWeight: "800", textAlign: "center", letterSpacing: -0.3, marginTop: 8, lineHeight: 22 },
-  cardMonth: { fontSize: 14, color: colors.muted, letterSpacing: 4, fontWeight: "700", marginTop: 18 },
-  cardDay: { fontSize: 64, lineHeight: 68, color: colors.ink, fontWeight: "800", fontVariant: ["tabular-nums"], letterSpacing: -2, marginTop: 2 },
-  cardYear: { fontSize: 12, color: colors.muted, letterSpacing: 5, fontWeight: "300", marginTop: 6 },
-  cardPlace: { fontSize: 11, color: colors.ink, opacity: 0.55, marginTop: 14, fontStyle: "italic" },
-  polaroid: {
-    position: "absolute",
-    width: 128,
-    height: 156,
-    backgroundColor: colors.fog,
-    borderRadius: 4,
-    padding: 6,
-    shadowColor: "#000",
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 }
-  },
-  polaroidImage: { flex: 1, backgroundColor: "#2A2336", borderRadius: 2 },
-  polaroidCaption: { fontSize: 10, color: colors.ink, textAlign: "center", marginTop: 4, fontStyle: "italic", fontWeight: "600" },
-  footer: { position: "absolute", left: 0, right: 0, bottom: 60, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
-  footerText: { fontSize: 10, color: colors.fog, letterSpacing: 1.8, fontWeight: "700", opacity: 0.75 }
-});
+/* Keep an unused reference to ColorMatrix to ensure the import survives tree-shaking
+   when we extend the file later with grading on photo walls. */
+void ColorMatrix;
