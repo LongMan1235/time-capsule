@@ -482,23 +482,16 @@ function TitleItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "titl
   const cy = useDerivedValue(() => SCREEN_H * 0.42 + (z - cameraZ.value) * 24);
   const titleWidth = step.title.length * 16;
   const x = useDerivedValue(() => SCREEN_W / 2 - (titleWidth * scale.value) / 2);
-  const fontSize = useDerivedValue(() => 36 * scale.value);
   const dateWidth = step.date.length * 6;
   const dateX = useDerivedValue(() => SCREEN_W / 2 - (dateWidth * scale.value) / 2);
   const dateY = useDerivedValue(() => cy.value + 36 * scale.value);
+  const titleY = useDerivedValue(() => cy.value + 28 * scale.value);
+  const underlineX = SCREEN_W / 2 - 22;
   return (
     <Group opacity={opacity}>
       <SkText x={dateX} y={cy} text={step.date} font={microFont} color="#E8C26B" />
-      <SkText x={x} y={useDerivedValue(() => cy.value + 28 * scale.value)} text={step.title} font={titleFont} color="#F5F1EA" />
-      {/* Underline rule */}
-      <Rect
-        x={useDerivedValue(() => SCREEN_W / 2 - 22)}
-        y={dateY}
-        width={44}
-        height={1}
-        color="#E8C26B"
-        opacity={0.55}
-      />
+      <SkText x={x} y={titleY} text={step.title} font={titleFont} color="#F5F1EA" />
+      <Rect x={underlineX} y={dateY} width={44} height={1} color="#E8C26B" opacity={0.55} />
       <BlurMask blur={blur} style="normal" />
     </Group>
   );
@@ -705,20 +698,25 @@ function QuoteItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "quot
   const { scale, blur, opacity } = useDepth(z, cameraZ);
   const cy = useDerivedValue(() => SCREEN_H * 0.42 + (z - cameraZ.value) * 18);
 
-  // Wrap the body to ~28 chars per line; we render up to 4 lines.
-  const lines = useMemo(() => wrapText(step.body, 28).slice(0, 4), [step.body]);
+  // Pad to a fixed 4 lines so the hook count is stable regardless of wrap output.
+  const lines = useMemo(() => {
+    const wrapped = wrapText(step.body, 28).slice(0, 4);
+    while (wrapped.length < 4) wrapped.push("");
+    return wrapped;
+  }, [step.body]);
+
+  const authorX = useDerivedValue(() => SCREEN_W / 2 - step.authorName.length * 4);
+  const authorY = useDerivedValue(() => cy.value + (lines.length + 1) * 28);
 
   return (
     <Group opacity={opacity}>
-      {lines.map((line, i) => {
-        const lineWidth = line.length * 11;
-        const lx = useDerivedValue(() => SCREEN_W / 2 - (lineWidth * scale.value) / 2);
-        const ly = useDerivedValue(() => cy.value + i * 28 * scale.value);
-        return <SkText key={i} x={lx} y={ly} text={line} font={titleFont} color="#F5F1EA" />;
-      })}
+      <QuoteLineRow line={lines[0]} index={0} cy={cy} scale={scale} />
+      <QuoteLineRow line={lines[1]} index={1} cy={cy} scale={scale} />
+      <QuoteLineRow line={lines[2]} index={2} cy={cy} scale={scale} />
+      <QuoteLineRow line={lines[3]} index={3} cy={cy} scale={scale} />
       <SkText
-        x={useDerivedValue(() => SCREEN_W / 2 - (step.authorName.length * 4))}
-        y={useDerivedValue(() => cy.value + (lines.length + 1) * 28)}
+        x={authorX}
+        y={authorY}
         text={`— ${step.authorName.toUpperCase()}  ·  ${formatLongDate(step.createdAt).toUpperCase()}`}
         font={microFont}
         color="#E8C26B"
@@ -726,6 +724,24 @@ function QuoteItem({ step, z, cameraZ }: { step: Extract<StepKind, { kind: "quot
       <BlurMask blur={blur} style="normal" />
     </Group>
   );
+}
+
+function QuoteLineRow({
+  line,
+  index,
+  cy,
+  scale
+}: {
+  line: string;
+  index: number;
+  cy: SharedValue<number>;
+  scale: SharedValue<number>;
+}) {
+  const lineWidth = line.length * 11;
+  const lx = useDerivedValue(() => SCREEN_W / 2 - (lineWidth * scale.value) / 2);
+  const ly = useDerivedValue(() => cy.value + index * 28 * scale.value);
+  if (!line) return null;
+  return <SkText x={lx} y={ly} text={line} font={titleFont} color="#F5F1EA" />;
 }
 
 /* ----- names — list of contributors, set like a film credit ----- */
