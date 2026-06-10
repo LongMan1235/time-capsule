@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, radii } from "../design/theme";
+import { useTheme } from "../design/ThemeProvider";
+import { radii } from "../design/themes";
 
 export interface FilterOption<T extends string> {
   value: T;
@@ -25,25 +26,30 @@ export function FilterChips<T extends string>({ options, value, onChange }: Prop
 }
 
 function Chip<T extends string>({ option, active, onPress }: { option: FilterOption<T>; active: boolean; onPress: () => void }) {
+  const { theme } = useTheme();
   const progress = useRef(new Animated.Value(active ? 1 : 0)).current;
 
   Animated.timing(progress, { toValue: active ? 1 : 0, duration: 220, useNativeDriver: false }).start();
 
   const backgroundColor = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: ["rgba(255,255,255,0.04)", colors.fog]
+    outputRange: [theme.bg.surface, theme.bg.inverse]
   });
   const borderColor = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: [colors.line, colors.fog]
+    outputRange: [theme.line.soft, theme.bg.inverse]
   });
 
   return (
     <Pressable onPress={onPress}>
       <Animated.View style={[styles.chip, { backgroundColor, borderColor }]}>
-        <Text style={[styles.label, active ? styles.labelActive : null]}>{option.label}</Text>
+        <Text style={[styles.label, { color: active ? theme.ink.onInverse : theme.ink.primary }]}>
+          {option.label}
+        </Text>
         {typeof option.count === "number" ? (
-          <Text style={[styles.count, active ? styles.countActive : null]}>{option.count}</Text>
+          <Text style={[styles.count, { color: active ? theme.ink.onInverse : theme.ink.muted, opacity: active ? 0.7 : 1 }]}>
+            {option.count}
+          </Text>
         ) : null}
       </Animated.View>
     </Pressable>
@@ -61,8 +67,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     borderWidth: 1
   },
-  label: { color: colors.fog, fontWeight: "700", fontSize: 13, letterSpacing: 0.2 },
-  labelActive: { color: colors.ink },
-  count: { color: colors.muted, fontSize: 12, fontWeight: "700" },
-  countActive: { color: colors.mutedDim }
+  label: { fontWeight: "700", fontSize: 13, letterSpacing: 0.2 },
+  count: { fontSize: 12, fontWeight: "700" }
 });

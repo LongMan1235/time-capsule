@@ -1,8 +1,10 @@
 import { Image } from "expo-image";
-import { Lock, MapPin } from "lucide-react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Lock } from "lucide-react-native";
 import { StyleSheet, Text, View } from "react-native";
 import type { EventSummary } from "@time-capsule/shared";
-import { colors, radii, shadow, type } from "../design/theme";
+import { useTheme } from "../design/ThemeProvider";
+import { radii, type } from "../design/themes";
 import { formatDate } from "../utils/dates";
 import { AnimatedPressable } from "./AnimatedPressable";
 import { CountdownTicker } from "./CountdownTicker";
@@ -13,137 +15,129 @@ interface Props {
   featured?: boolean;
 }
 
-const fallbackCover = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=800&q=70";
+const fallbackCover = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80";
 
+/**
+ * Memory card. In marble mode this reads like a stiff card sat on cream paper:
+ * thumbnail flush at top, type set below in ink. In obsidian mode it inverts.
+ * No polaroid rotation, no tape — just well-composed editorial typography.
+ */
 export function MemoryCard({ event, onPress, featured = false }: Props) {
+  const { theme, shadows } = useTheme();
   const locked = event.state === "LOCKED";
-  const draft = event.state === "DRAFT";
 
   return (
-    <AnimatedPressable onPress={onPress} style={[styles.page, shadow.soft]}>
-      <View style={styles.polaroid}>
+    <AnimatedPressable
+      onPress={onPress}
+      style={[
+        styles.shell,
+        shadows.soft,
+        {
+          backgroundColor: theme.bg.elevated,
+          borderColor: theme.line.soft
+        },
+        featured ? styles.featured : null
+      ]}
+    >
+      <View style={styles.thumbWrap}>
         <Image
           source={{ uri: event.coverUrl ?? fallbackCover }}
-          style={[styles.cover, locked ? styles.coverLocked : null]}
+          style={styles.thumb}
           contentFit="cover"
           transition={400}
         />
-        {locked ? <View style={styles.lockOverlay} /> : null}
-        <View style={styles.tapeLeft} />
-        <View style={styles.tapeRight} />
+        {locked ? (
+          <LinearGradient
+            colors={["rgba(26,20,16,0.10)", "rgba(26,20,16,0.45)"]}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
+        <View style={styles.thumbOverlay}>
+          {locked ? (
+            <View style={[styles.statePill, { backgroundColor: theme.bg.inverse }]}>
+              <Lock size={10} color={theme.ink.onInverse} />
+              <Text style={[styles.statePillText, { color: theme.ink.onInverse }]}>SEALED</Text>
+            </View>
+          ) : event.state === "DRAFT" ? (
+            <View style={[styles.statePill, { backgroundColor: theme.bg.inverse, opacity: 0.78 }]}>
+              <Text style={[styles.statePillText, { color: theme.ink.onInverse }]}>DRAFT</Text>
+            </View>
+          ) : (
+            <View style={[styles.statePill, { backgroundColor: theme.accent.gold }]}>
+              <Text style={[styles.statePillText, { color: theme.ink.onAccent }]}>OPEN</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       <View style={styles.body}>
-        <View style={styles.row}>
-          <Text style={styles.date}>{formatDate(event.eventDate)}</Text>
-          <View style={styles.stateChip}>
-            {locked ? <Lock size={10} color={colors.muted} /> : null}
-            <Text style={styles.stateText}>{stateLabel(event.state)}</Text>
-          </View>
-        </View>
-        <Text style={styles.title} numberOfLines={2}>{event.title}</Text>
+        <Text style={[styles.date, { color: theme.accent.gold }]}>
+          {formatDate(event.eventDate).toUpperCase()}
+        </Text>
+        <Text style={[styles.title, { color: theme.ink.primary }]} numberOfLines={2}>
+          {event.title}
+        </Text>
         <View style={styles.metaRow}>
           {event.locationName ? (
-            <View style={styles.metaItem}>
-              <MapPin size={11} color={colors.muted} />
-              <Text style={styles.metaText}>{event.locationName}</Text>
-            </View>
+            <Text style={[styles.meta, { color: theme.ink.muted }]} numberOfLines={1}>
+              {event.locationName}
+            </Text>
           ) : null}
-          <Text style={styles.metaDot}>·</Text>
-          <Text style={styles.metaText}>{event.mediaCount} {event.mediaCount === 1 ? "memory" : "memories"}</Text>
+          <View style={[styles.dot, { backgroundColor: theme.ink.faint }]} />
+          <Text style={[styles.meta, { color: theme.ink.muted }]}>
+            {event.mediaCount} {event.mediaCount === 1 ? "memory" : "memories"}
+          </Text>
         </View>
         {locked && event.unlockAt ? (
-          <View style={styles.tickerWrap}>
+          <View style={[styles.tickerRow, { borderTopColor: theme.line.soft }]}>
+            <Text style={[styles.tickerLabel, { color: theme.ink.muted }]}>OPENS IN</Text>
             <CountdownTicker unlockAt={event.unlockAt} compact />
-            <Text style={styles.tickerLabel}>until it opens</Text>
           </View>
         ) : null}
-        {draft ? <Text style={styles.draftHint}>still collecting</Text> : null}
       </View>
     </AnimatedPressable>
   );
 }
 
-function stateLabel(state: EventSummary["state"]) {
-  switch (state) {
-    case "LOCKED": return "SEALED";
-    case "UNLOCKED": return "OPEN";
-    case "DRAFT":
-    default: return "DRAFT";
-  }
-}
-
 const styles = StyleSheet.create({
-  page: {
-    backgroundColor: colors.cardElevated,
+  shell: {
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.line,
-    padding: 14,
-    marginBottom: 14,
+    overflow: "hidden",
+    marginBottom: 16
+  },
+  featured: {},
+  thumbWrap: { width: "100%", aspectRatio: 16 / 10, position: "relative" },
+  thumb: { ...StyleSheet.absoluteFillObject },
+  thumbOverlay: {
+    position: "absolute",
+    top: 12,
+    right: 12,
     flexDirection: "row",
-    gap: 14
+    gap: 6
   },
-  polaroid: {
-    width: 100,
-    height: 124,
-    backgroundColor: colors.fog,
-    borderRadius: 4,
-    padding: 6,
-    transform: [{ rotate: "-2deg" }],
-    shadowColor: "#000",
-    shadowOpacity: 0.30,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 }
-  },
-  cover: { flex: 1, borderRadius: 2 },
-  coverLocked: { opacity: 0.6 },
-  lockOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    margin: 6,
-    backgroundColor: "rgba(8,6,12,0.20)",
-    borderRadius: 2
-  },
-  tapeLeft: {
-    position: "absolute",
-    top: -6,
-    left: 14,
-    width: 26,
-    height: 14,
-    backgroundColor: "rgba(232,194,107,0.40)",
-    transform: [{ rotate: "-8deg" }],
-    borderRadius: 2
-  },
-  tapeRight: {
-    position: "absolute",
-    top: -6,
-    right: 10,
-    width: 22,
-    height: 14,
-    backgroundColor: "rgba(232,194,107,0.35)",
-    transform: [{ rotate: "10deg" }],
-    borderRadius: 2
-  },
-  body: { flex: 1, justifyContent: "space-between", paddingVertical: 2 },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  date: { ...type.caption, color: colors.muted },
-  stateChip: {
+  statePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.line
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.pill
   },
-  stateText: { ...type.micro, color: colors.muted, letterSpacing: 1.2 },
-  title: { ...type.heading, color: colors.fog, marginVertical: 6 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaText: { ...type.caption, color: colors.muted },
-  metaDot: { color: colors.mutedDim, fontSize: 12 },
-  tickerWrap: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
-  tickerLabel: { ...type.micro, color: colors.muted, letterSpacing: 1 },
-  draftHint: { ...type.micro, color: colors.gold, letterSpacing: 1.2, marginTop: 6 }
+  statePillText: { fontSize: 9, letterSpacing: 1.6, fontWeight: "800" },
+  body: { padding: 18, gap: 6 },
+  date: { ...type.micro, letterSpacing: 2 },
+  title: { ...type.heading, fontSize: 22, lineHeight: 26, marginTop: 4 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6 },
+  meta: { ...type.caption },
+  dot: { width: 3, height: 3, borderRadius: 2 },
+  tickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 10,
+    marginTop: 8,
+    borderTopWidth: 1
+  },
+  tickerLabel: { ...type.micro }
 });

@@ -1,7 +1,7 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { Image } from "expo-image";
-import { CalendarHeart, Clapperboard, Compass, Plus } from "lucide-react-native";
+import { CalendarHeart, Compass, Plus } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { EventSummary } from "@time-capsule/shared";
@@ -12,7 +12,8 @@ import { MemoryCard } from "../components/MemoryCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
-import { colors, radii, type } from "../design/theme";
+import { useTheme } from "../design/ThemeProvider";
+import { radii, type } from "../design/themes";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { hasSeenPersonalize } from "./PersonalizeScreen";
 import { loadPrefs, reschedule } from "../api/notifications";
@@ -46,6 +47,7 @@ const filterOptions: Array<FilterOption<Filter>> = [
 
 export function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { theme, shadows } = useTheme();
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [onThisDay, setOnThisDay] = useState<OnThisDayMemory[]>([]);
   const [anniversaries, setAnniversaries] = useState<Anniversary[]>([]);
@@ -107,75 +109,80 @@ export function HomeScreen() {
     }
   }, [events, filter]);
 
-  const headerOpacity = scrollY.interpolate({ inputRange: [0, 80], outputRange: [1, 0.7], extrapolate: "clamp" });
+  const headerOpacity = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.55], extrapolate: "clamp" });
+  const headerTranslate = scrollY.interpolate({ inputRange: [0, 100], outputRange: [0, -12], extrapolate: "clamp" });
 
   return (
-    <Screen tone="paper" edges={["top", "left", "right"]}>
+    <Screen edges={["top", "left", "right"]}>
       <Animated.FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.gold} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={theme.accent.gold} />}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
         ListHeaderComponent={
-          <Animated.View style={{ opacity: headerOpacity }}>
-            <View style={styles.topBar}>
+          <Animated.View style={{ opacity: headerOpacity, transform: [{ translateY: headerTranslate }] }}>
+            {/* Hero header */}
+            <View style={styles.heroRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.eyebrow}>{greeting.toUpperCase()}</Text>
-                <Text style={styles.title}>
-                  {displayName ? `Hello, ${displayName}` : "Your scrapbook"}
+                <Text style={[styles.eyebrow, { color: theme.accent.gold }]}>{greeting.toUpperCase()}</Text>
+                <Text style={[styles.headline, { color: theme.ink.primary }]} numberOfLines={2}>
+                  {displayName ? `Hello,\n${displayName}.` : "Your archive."}
                 </Text>
-                <Text style={styles.subtitle}>{counts.all} {counts.all === 1 ? "page" : "pages"}</Text>
+                <Text style={[styles.headlineMeta, { color: theme.ink.muted }]}>
+                  {counts.all} {counts.all === 1 ? "capsule" : "capsules"}
+                </Text>
               </View>
-              <AnimatedPressable onPress={() => navigation.navigate("CreateEvent")} style={styles.createPill}>
-                <Plus color={colors.fog} size={16} />
+              <AnimatedPressable
+                onPress={() => navigation.navigate("CreateEvent")}
+                style={[styles.createButton, shadows.soft, { backgroundColor: theme.bg.inverse }]}
+              >
+                <Plus color={theme.ink.onInverse} size={20} />
               </AnimatedPressable>
             </View>
 
+            {/* On-this-day callout (only when present) */}
             {onThisDay.length > 0 ? (
-              <Stagger delay={120} style={{ marginBottom: 16 }}>
+              <Stagger delay={100}>
                 <AnimatedPressable
                   onPress={() => navigation.navigate("EventDetail", { eventId: onThisDay[0].id })}
-                  style={styles.onThisDay}
+                  style={[styles.onThisDay, shadows.soft, { backgroundColor: theme.bg.elevated, borderColor: theme.line.soft }]}
                 >
                   {onThisDay[0].coverUrl ? (
-                    <Image source={{ uri: onThisDay[0].coverUrl }} style={styles.onThisDayCover} contentFit="cover" transition={300} />
+                    <Image source={{ uri: onThisDay[0].coverUrl }} style={styles.onThisDayCover} contentFit="cover" transition={350} />
                   ) : (
-                    <View style={styles.onThisDayCover} />
+                    <View style={[styles.onThisDayCover, { backgroundColor: theme.bg.surface }]} />
                   )}
-                  <View style={styles.onThisDayBody}>
-                    <View style={styles.onThisDayHeader}>
-                      <CalendarHeart color={colors.gold} size={12} />
-                      <Text style={styles.onThisDayEyebrow}>ON THIS DAY · {onThisDay[0].yearsAgo} YR{onThisDay[0].yearsAgo === 1 ? "" : "S"} AGO</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.onThisDayHead}>
+                      <CalendarHeart color={theme.accent.gold} size={12} />
+                      <Text style={[styles.onThisDayEyebrow, { color: theme.accent.gold }]}>
+                        ON THIS DAY · {onThisDay[0].yearsAgo} YR{onThisDay[0].yearsAgo === 1 ? "" : "S"} AGO
+                      </Text>
                     </View>
-                    <Text style={styles.onThisDayTitle} numberOfLines={1}>{onThisDay[0].title}</Text>
+                    <Text style={[styles.onThisDayTitle, { color: theme.ink.primary }]} numberOfLines={1}>
+                      {onThisDay[0].title}
+                    </Text>
                     {onThisDay[0].locationName ? (
-                      <Text style={styles.onThisDayMeta}>{onThisDay[0].locationName}</Text>
+                      <Text style={[styles.onThisDayMeta, { color: theme.ink.muted }]}>{onThisDay[0].locationName}</Text>
                     ) : null}
                   </View>
                 </AnimatedPressable>
               </Stagger>
             ) : null}
 
-            <Stagger delay={140} style={styles.filterRow}>
-              <FilterChips
-                options={filterOptions.map((opt) => ({ ...opt, count: counts[opt.value] }))}
-                value={filter}
-                onChange={setFilter}
-              />
-            </Stagger>
-
+            {/* Anniversary strip */}
             {anniversaries.length > 0 ? (
-              <Stagger delay={160} style={{ marginBottom: 12 }}>
-                <Text style={styles.eyebrowMuted}>UPCOMING UNLOCKS</Text>
+              <Stagger delay={140}>
+                <Text style={[styles.sectionEyebrow, { color: theme.ink.muted }]}>UPCOMING UNLOCKS</Text>
                 <FlatList
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   data={anniversaries}
                   keyExtractor={(item) => item.id}
-                  contentContainerStyle={{ gap: 8, paddingTop: 8 }}
+                  contentContainerStyle={styles.anniversariesList}
                   renderItem={({ item }) => (
                     <AnimatedPressable
                       onPress={() =>
@@ -185,39 +192,50 @@ export function HomeScreen() {
                           unlockAt: item.unlockAt
                         })
                       }
-                      style={styles.anniversaryCard}
+                      style={[styles.anniversaryCard, { backgroundColor: theme.bg.elevated, borderColor: theme.line.soft }]}
                     >
-                      <Text style={styles.anniversaryDays}>
-                        {item.unlocksInDays === 0 ? "today" : `in ${item.unlocksInDays}d`}
+                      <Text style={[styles.anniversaryDays, { color: theme.accent.gold }]}>
+                        {item.unlocksInDays === 0 ? "TODAY" : `IN ${item.unlocksInDays}D`}
                       </Text>
-                      <Text style={styles.anniversaryTitle} numberOfLines={1}>{item.title}</Text>
+                      <Text style={[styles.anniversaryTitle, { color: theme.ink.primary }]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
                     </AnimatedPressable>
                   )}
                 />
               </Stagger>
             ) : null}
 
-            <Stagger delay={180} style={styles.linksRow}>
-              <AnimatedPressable onPress={() => navigation.navigate("Explore")} style={styles.exploreRow}>
-                <Compass color={colors.muted} size={14} />
-                <Text style={styles.exploreText}>Explore</Text>
+            {/* Filter row */}
+            <Stagger delay={180} style={{ marginTop: 22, marginBottom: 18 }}>
+              <FilterChips
+                options={filterOptions.map((opt) => ({ ...opt, count: counts[opt.value] }))}
+                value={filter}
+                onChange={setFilter}
+              />
+            </Stagger>
+
+            <Stagger delay={220} style={styles.linksRow}>
+              <AnimatedPressable
+                onPress={() => navigation.navigate("Explore")}
+                style={[styles.linkPill, { borderColor: theme.line.soft }]}
+              >
+                <Compass color={theme.ink.muted} size={13} />
+                <Text style={[styles.linkText, { color: theme.ink.muted }]}>Explore</Text>
               </AnimatedPressable>
               <AnimatedPressable
                 onPress={() => navigation.navigate("RecapReel", { year: new Date().getFullYear() - 1 })}
-                style={styles.exploreRow}
+                style={[styles.linkPill, { borderColor: theme.line.soft }]}
               >
-                <Clapperboard color={colors.muted} size={14} />
-                <Text style={styles.exploreText}>Year recap</Text>
+                <Text style={[styles.linkText, { color: theme.ink.muted }]}>Year recap</Text>
               </AnimatedPressable>
             </Stagger>
           </Animated.View>
         }
-        ItemSeparatorComponent={() => <View style={{ height: 0 }} />}
         renderItem={({ item, index }) => (
-          <Stagger delay={80 + index * 60} translate={16}>
+          <Stagger delay={120 + index * 70} translate={16}>
             <MemoryCard
               event={item}
-              featured={index === 0 && filter === "all"}
               onPress={() =>
                 item.state === "LOCKED" && item.unlockAt
                   ? navigation.navigate("Countdown", { eventId: item.id, title: item.title, unlockAt: item.unlockAt })
@@ -228,14 +246,16 @@ export function HomeScreen() {
         )}
         ListEmptyComponent={
           <Stagger delay={200}>
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No capsules yet</Text>
-              <Text style={styles.emptyBody}>
+            <View style={[styles.empty, { borderColor: theme.line.soft, backgroundColor: theme.bg.surface }]}>
+              <Text style={[styles.emptyTitle, { color: theme.ink.primary }]}>No capsules yet</Text>
+              <Text style={[styles.emptyBody, { color: theme.ink.muted }]}>
                 Start with a trip, a birthday, or a week you do not want to disappear into the camera roll.
               </Text>
-              <PrimaryButton onPress={() => navigation.navigate("CreateEvent")} icon={Plus}>
-                Create capsule
-              </PrimaryButton>
+              <View style={{ marginTop: 18 }}>
+                <PrimaryButton onPress={() => navigation.navigate("CreateEvent")} icon={Plus}>
+                  Create your first capsule
+                </PrimaryButton>
+              </View>
             </View>
           </Stagger>
         }
@@ -254,65 +274,62 @@ function greetingForNow() {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 140 },
-  topBar: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 24 },
-  eyebrow: { ...type.micro, color: colors.muted },
-  title: { ...type.hero, color: colors.fog, marginTop: 4 },
-  subtitle: { ...type.caption, color: colors.muted, marginTop: 4 },
-  createPill: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  content: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 140 },
+  heroRow: { flexDirection: "row", alignItems: "flex-end", gap: 12, marginBottom: 26 },
+  eyebrow: { ...type.micro, letterSpacing: 2.8 },
+  headline: { ...type.display, fontSize: 38, lineHeight: 42, marginTop: 8 },
+  headlineMeta: { ...type.caption, marginTop: 6 },
+  createButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.lineBright,
-    backgroundColor: colors.card
+    justifyContent: "center"
   },
-  filterRow: { marginBottom: 20 },
   onThisDay: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    padding: 8,
+    gap: 14,
+    padding: 12,
     borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: "rgba(232,194,107,0.30)",
-    backgroundColor: "rgba(232,194,107,0.06)"
+    borderWidth: 1
   },
-  onThisDayCover: { width: 56, height: 56, borderRadius: radii.md, backgroundColor: colors.dusk },
-  onThisDayBody: { flex: 1, gap: 4 },
-  onThisDayHeader: { flexDirection: "row", alignItems: "center", gap: 5 },
-  onThisDayEyebrow: { ...type.micro, color: colors.gold, letterSpacing: 1.4 },
-  onThisDayTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
-  onThisDayMeta: { ...type.caption, color: colors.muted },
-  exploreRow: {
+  onThisDayCover: { width: 58, height: 58, borderRadius: radii.md },
+  onThisDayHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  onThisDayEyebrow: { ...type.micro, letterSpacing: 1.5, fontWeight: "800" },
+  onThisDayTitle: { ...type.subtitle, fontWeight: "700", marginTop: 4 },
+  onThisDayMeta: { ...type.caption, marginTop: 2 },
+  sectionEyebrow: { ...type.micro, letterSpacing: 2.4, marginTop: 24, marginBottom: 10 },
+  anniversariesList: { gap: 8 },
+  anniversaryCard: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    minWidth: 140
+  },
+  anniversaryDays: { ...type.micro, letterSpacing: 1.6, fontWeight: "800" },
+  anniversaryTitle: { ...type.body, fontWeight: "700", marginTop: 4 },
+  linksRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  linkPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.card
+    borderWidth: 1
   },
-  exploreText: { ...type.caption, color: colors.muted, fontWeight: "600" },
-  linksRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
-  eyebrowMuted: { ...type.micro, color: colors.muted },
-  anniversaryCard: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: radii.md,
+  linkText: { ...type.caption, fontWeight: "600" },
+  empty: {
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 36,
+    paddingHorizontal: 22,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.card,
-    minWidth: 140
+    marginTop: 8
   },
-  anniversaryDays: { ...type.micro, color: colors.gold, letterSpacing: 1.4 },
-  anniversaryTitle: { ...type.body, color: colors.fog, fontWeight: "600", marginTop: 4 },
-  empty: { alignItems: "center", gap: 12, paddingVertical: 60, paddingHorizontal: 12 },
-  emptyTitle: { ...type.title, color: colors.fog, textAlign: "center" },
-  emptyBody: { ...type.body, color: colors.muted, textAlign: "center" }
+  emptyTitle: { ...type.title },
+  emptyBody: { ...type.body, textAlign: "center" }
 });

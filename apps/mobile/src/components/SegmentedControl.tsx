@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Animated, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, radii } from "../design/theme";
+import { useTheme } from "../design/ThemeProvider";
+import { radii } from "../design/themes";
 
 interface Props<T extends string> {
   options: Array<{ value: T; label: string }>;
@@ -9,6 +10,7 @@ interface Props<T extends string> {
 }
 
 export function SegmentedControl<T extends string>({ options, value, onChange }: Props<T>) {
+  const { theme } = useTheme();
   const widthRef = useRef(0);
   const indicator = useRef(new Animated.Value(0)).current;
   const index = options.findIndex((option) => option.value === value);
@@ -36,18 +38,23 @@ export function SegmentedControl<T extends string>({ options, value, onChange }:
   const segmentWidth = (widthRef.current || 0) / options.length;
 
   return (
-    <View style={styles.wrap} onLayout={onLayout}>
+    <View
+      style={[styles.wrap, { backgroundColor: theme.bg.surface, borderColor: theme.line.soft }]}
+      onLayout={onLayout}
+    >
       <Animated.View
         style={[
           styles.indicator,
-          { width: segmentWidth - 6, transform: [{ translateX }] }
+          { backgroundColor: theme.bg.inverse, width: segmentWidth - 6, transform: [{ translateX }] }
         ]}
       />
       {options.map((option) => {
         const active = option.value === value;
         return (
           <Pressable key={option.value} style={styles.segment} onPress={() => onChange(option.value)}>
-            <Text style={[styles.label, active ? styles.labelActive : null]}>{option.label}</Text>
+            <Text style={[styles.label, { color: active ? theme.ink.onInverse : theme.ink.muted }]}>
+              {option.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -60,20 +67,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     padding: 3,
     borderRadius: radii.pill,
-    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: colors.line,
     position: "relative"
   },
-  indicator: {
-    position: "absolute",
-    top: 3,
-    left: 3,
-    bottom: 3,
-    borderRadius: radii.pill,
-    backgroundColor: colors.fog
-  },
-  segment: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 10 },
-  label: { color: colors.muted, fontWeight: "700", fontSize: 13 },
-  labelActive: { color: colors.ink }
+  indicator: { position: "absolute", top: 3, left: 3, bottom: 3, borderRadius: radii.pill },
+  segment: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 11 },
+  label: { fontWeight: "700", fontSize: 13, letterSpacing: 0.2 }
 });

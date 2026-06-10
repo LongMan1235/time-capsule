@@ -1,20 +1,22 @@
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Image } from "expo-image";
-import { ChevronRight, LogOut, ShieldCheck, Sparkles, Trash2, UserRound } from "lucide-react-native";
+import { ChevronRight, LogOut, Moon, ShieldCheck, Sparkles, Sun, Trash2, UserRound } from "lucide-react-native";
 import { useState } from "react";
 import { Alert, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { api } from "../api/client";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { Screen } from "../components/Screen";
 import { Stagger } from "../components/Stagger";
-import { colors, radii, type } from "../design/theme";
+import { useTheme } from "../design/ThemeProvider";
+import { radii, type } from "../design/themes";
 import type { IconComponent } from "../design/icons";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useSessionStore } from "../store/session";
 
 export function PrivacyScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { theme, mode, setMode } = useTheme();
   const [aiOptIn, setAiOptIn] = useState(false);
   const [faceRecognitionOptIn, setFaceRecognitionOptIn] = useState(false);
   const user = useSessionStore((state) => state.user);
@@ -51,34 +53,60 @@ export function PrivacyScreen() {
     <Screen>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Stagger delay={60}>
-          <Text style={styles.eyebrow}>PRIVACY</Text>
+          <Text style={[styles.eyebrow, { color: theme.accent.gold }]}>SETTINGS</Text>
         </Stagger>
         <Stagger delay={160}>
-          <Text style={styles.title}>You decide what we see.</Text>
+          <Text style={[styles.title, { color: theme.ink.primary }]}>You decide what we see.</Text>
         </Stagger>
 
         {user ? (
           <Stagger delay={280}>
-            <AnimatedPressable onPress={() => navigation.navigate("Profile")} style={styles.profileCard}>
+            <AnimatedPressable
+              onPress={() => navigation.navigate("Profile")}
+              style={[styles.profileCard, { backgroundColor: theme.bg.elevated, borderColor: theme.line.soft }]}
+            >
               {user.avatarUrl ? (
                 <Image source={{ uri: user.avatarUrl }} style={styles.avatar} contentFit="cover" transition={300} />
               ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <UserRound color={colors.muted} size={20} />
+                <View style={[styles.avatar, styles.avatarFallback, { borderColor: theme.line.hard, backgroundColor: theme.bg.surface }]}>
+                  <UserRound color={theme.ink.muted} size={20} />
                 </View>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={styles.profileName}>{user.displayName}</Text>
-                <Text style={styles.profileMeta}>@{user.username}</Text>
+                <Text style={[styles.profileName, { color: theme.ink.primary }]}>{user.displayName}</Text>
+                <Text style={[styles.profileMeta, { color: theme.ink.muted }]}>@{user.username}</Text>
               </View>
-              <ChevronRight color={colors.muted} size={16} />
+              <ChevronRight color={theme.ink.muted} size={16} />
             </AnimatedPressable>
           </Stagger>
         ) : null}
 
-        <Stagger delay={400}>
-          <View style={styles.group}>
-            <Text style={styles.groupLabel}>AI &amp; SEARCH</Text>
+        {/* APPEARANCE */}
+        <Stagger delay={360}>
+          <View style={[styles.group, { backgroundColor: theme.bg.elevated, borderColor: theme.line.soft }]}>
+            <Text style={[styles.groupLabel, { color: theme.ink.muted }]}>APPEARANCE</Text>
+            <View style={[styles.appearanceRow]}>
+              <ThemeOption
+                icon={Sun}
+                label="Marble"
+                description="Warm cream, gold accents"
+                active={mode === "marble"}
+                onPress={() => setMode("marble")}
+              />
+              <ThemeOption
+                icon={Moon}
+                label="Obsidian"
+                description="Deep ink, gold accents"
+                active={mode === "obsidian"}
+                onPress={() => setMode("obsidian")}
+              />
+            </View>
+          </View>
+        </Stagger>
+
+        <Stagger delay={420}>
+          <View style={[styles.group, { backgroundColor: theme.bg.elevated, borderColor: theme.line.soft }]}>
+            <Text style={[styles.groupLabel, { color: theme.ink.muted }]}>AI &amp; SEARCH</Text>
             <Row
               Icon={Sparkles}
               title="Smart memory search"
@@ -98,38 +126,91 @@ export function PrivacyScreen() {
         </Stagger>
 
         <Stagger delay={520}>
-          <View style={styles.group}>
-            <Text style={styles.groupLabel}>ACCOUNT</Text>
+          <View style={[styles.group, { backgroundColor: theme.bg.elevated, borderColor: theme.line.soft }]}>
+            <Text style={[styles.groupLabel, { color: theme.ink.muted }]}>ACCOUNT</Text>
             <AnimatedPressable style={styles.action} onPress={requestDeletion}>
-              <View style={[styles.actionIcon, styles.actionIconDanger]}>
-                <Trash2 color={colors.danger} size={15} />
+              <View
+                style={[
+                  styles.actionIcon,
+                  { backgroundColor: "rgba(181,82,62,0.10)", borderColor: "rgba(181,82,62,0.32)" }
+                ]}
+              >
+                <Trash2 color={theme.accent.danger} size={15} />
               </View>
               <View style={styles.actionCopy}>
-                <Text style={[styles.actionTitle, { color: colors.danger }]}>Delete account</Text>
-                <Text style={styles.actionBody}>Capsules and media are wiped.</Text>
+                <Text style={[styles.actionTitle, { color: theme.accent.danger }]}>Delete account</Text>
+                <Text style={[styles.actionBody, { color: theme.ink.muted }]}>Capsules and media are wiped.</Text>
               </View>
             </AnimatedPressable>
             <Divider />
             <AnimatedPressable style={styles.action} onPress={() => signOut()}>
-              <View style={styles.actionIcon}>
-                <LogOut color={colors.fog} size={15} />
+              <View style={[styles.actionIcon, { backgroundColor: theme.bg.surface, borderColor: theme.line.hard }]}>
+                <LogOut color={theme.ink.primary} size={15} />
               </View>
               <View style={styles.actionCopy}>
-                <Text style={styles.actionTitle}>Sign out</Text>
-                <Text style={styles.actionBody}>Your capsules stay where they are.</Text>
+                <Text style={[styles.actionTitle, { color: theme.ink.primary }]}>Sign out</Text>
+                <Text style={[styles.actionBody, { color: theme.ink.muted }]}>Your capsules stay where they are.</Text>
               </View>
             </AnimatedPressable>
           </View>
         </Stagger>
 
         <Stagger delay={640}>
-          <View style={styles.assurance}>
-            <ShieldCheck color={colors.muted} size={14} />
-            <Text style={styles.assuranceText}>End-to-end encrypted · GDPR-style deletion</Text>
+          <View style={[styles.assurance, { backgroundColor: theme.bg.surface, borderColor: theme.line.soft }]}>
+            <ShieldCheck color={theme.ink.muted} size={14} />
+            <Text style={[styles.assuranceText, { color: theme.ink.muted }]}>
+              End-to-end encrypted · GDPR-style deletion
+            </Text>
           </View>
         </Stagger>
       </ScrollView>
     </Screen>
+  );
+}
+
+function ThemeOption({
+  icon: Icon,
+  label,
+  description,
+  active,
+  onPress
+}: {
+  icon: IconComponent;
+  label: string;
+  description: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      style={[
+        styles.themeOption,
+        {
+          backgroundColor: active ? theme.bg.inverse : theme.bg.surface,
+          borderColor: active ? theme.bg.inverse : theme.line.soft
+        }
+      ]}
+    >
+      <View
+        style={[
+          styles.themeOptionIcon,
+          {
+            backgroundColor: active ? "rgba(232,194,107,0.18)" : theme.bg.canvas,
+            borderColor: active ? "rgba(232,194,107,0.42)" : theme.line.soft
+          }
+        ]}
+      >
+        <Icon color={active ? theme.accent.goldSoft : theme.ink.muted} size={16} />
+      </View>
+      <Text style={[styles.themeOptionLabel, { color: active ? theme.ink.onInverse : theme.ink.primary }]}>
+        {label}
+      </Text>
+      <Text style={[styles.themeOptionDesc, { color: active ? theme.ink.onInverse : theme.ink.muted, opacity: active ? 0.7 : 1 }]}>
+        {description}
+      </Text>
+    </AnimatedPressable>
   );
 }
 
@@ -146,84 +227,94 @@ function Row({
   value: boolean;
   onChange: (next: boolean) => void;
 }) {
+  const { theme } = useTheme();
   return (
     <View style={styles.row}>
-      <View style={styles.actionIcon}>
-        <Icon color={colors.fog} size={15} />
+      <View style={[styles.actionIcon, { backgroundColor: theme.bg.surface, borderColor: theme.line.soft }]}>
+        <Icon color={theme.ink.primary} size={15} />
       </View>
       <View style={styles.actionCopy}>
-        <Text style={styles.actionTitle}>{title}</Text>
-        <Text style={styles.actionBody}>{body}</Text>
+        <Text style={[styles.actionTitle, { color: theme.ink.primary }]}>{title}</Text>
+        <Text style={[styles.actionBody, { color: theme.ink.muted }]}>{body}</Text>
       </View>
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: "rgba(255,255,255,0.10)", true: colors.gold }}
-        thumbColor={colors.fog}
+        trackColor={{ false: theme.line.hard, true: theme.accent.gold }}
+        thumbColor={theme.bg.canvas}
       />
     </View>
   );
 }
 
 function Divider() {
-  return <View style={styles.divider} />;
+  const { theme } = useTheme();
+  return <View style={[styles.divider, { backgroundColor: theme.line.soft }]} />;
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 140, gap: 16 },
-  eyebrow: { ...type.micro, color: colors.muted },
-  title: { ...type.hero, color: colors.fog, marginTop: 6 },
+  content: { padding: 22, paddingBottom: 140, gap: 18 },
+  eyebrow: { ...type.micro, letterSpacing: 2.8 },
+  title: { ...type.hero, marginTop: 6 },
   profileCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 14,
     padding: 14,
     borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.card
+    borderWidth: 1
   },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.dusk },
-  avatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.line },
-  profileName: { ...type.subtitle, color: colors.fog, fontWeight: "600" },
-  profileMeta: { ...type.caption, color: colors.muted, marginTop: 2 },
+  avatar: { width: 46, height: 46, borderRadius: 23 },
+  avatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  profileName: { ...type.subtitle, fontWeight: "700" },
+  profileMeta: { ...type.caption, marginTop: 2 },
   group: {
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.card,
-    overflow: "hidden"
+    overflow: "hidden",
+    paddingBottom: 6
   },
-  groupLabel: { ...type.micro, color: colors.muted, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8 },
+  groupLabel: { ...type.micro, letterSpacing: 2.4, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10 },
+  appearanceRow: { flexDirection: "row", gap: 10, paddingHorizontal: 12, paddingBottom: 12 },
+  themeOption: {
+    flex: 1,
+    padding: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    alignItems: "flex-start",
+    gap: 8
+  },
+  themeOptionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1
+  },
+  themeOptionLabel: { ...type.body, fontWeight: "700" },
+  themeOptionDesc: { ...type.caption },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
   action: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
   actionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.line
-  },
-  actionIconDanger: {
-    backgroundColor: "rgba(227,122,106,0.08)",
-    borderColor: "rgba(227,122,106,0.30)"
+    borderWidth: 1
   },
   actionCopy: { flex: 1 },
-  actionTitle: { ...type.body, color: colors.fog, fontWeight: "600" },
-  actionBody: { ...type.caption, color: colors.muted, marginTop: 2 },
-  divider: { height: 1, backgroundColor: colors.line, marginLeft: 56 },
+  actionTitle: { ...type.body, fontWeight: "700" },
+  actionBody: { ...type.caption, marginTop: 2 },
+  divider: { height: 1, marginLeft: 58 },
   assurance: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     padding: 12,
     borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.card
+    borderWidth: 1
   },
-  assuranceText: { ...type.caption, color: colors.muted, flex: 1 }
+  assuranceText: { ...type.caption, flex: 1 }
 });

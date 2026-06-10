@@ -1,93 +1,113 @@
 import { LinearGradient } from "expo-linear-gradient";
 import type { PropsWithChildren } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { colors, gradients, radii, shadow } from "../design/theme";
+import { useTheme } from "../design/ThemeProvider";
+import { radii } from "../design/themes";
 import type { IconComponent } from "../design/icons";
 import { AnimatedPressable } from "./AnimatedPressable";
 
 interface Props extends PropsWithChildren {
   onPress: () => void;
-  variant?: "gold" | "light" | "ghost" | "danger";
+  variant?: "primary" | "ghost" | "danger";
   icon?: IconComponent;
   loading?: boolean;
   disabled?: boolean;
 }
 
-export function PrimaryButton({ children, onPress, variant = "gold", icon: Icon, loading = false, disabled = false }: Props) {
-  const fg = textColorFor(variant);
+/**
+ * The button system has two visuals only:
+ *   • primary — ink filled, cream label (light) / cream filled, ink label (dark)
+ *   • ghost   — hairline border on canvas, ink label
+ *   • danger  — soft rose tint
+ *
+ * The "look" inverts between marble + obsidian automatically so it always
+ * reads as the bolder option on whichever surface we're sitting on.
+ */
+export function PrimaryButton({ children, onPress, variant = "primary", icon: Icon, loading = false, disabled = false }: Props) {
+  const { theme, shadows } = useTheme();
 
-  if (variant === "ghost") {
-    return (
-      <AnimatedPressable
-        onPress={loading || disabled ? () => undefined : onPress}
-        style={[styles.shell, disabled ? styles.disabled : null]}
-      >
-        <View style={[styles.fill, styles.ghost]}>
-          <ButtonContent loading={loading} fg={fg} Icon={Icon}>
-            {children}
-          </ButtonContent>
+  const palette = paletteFor(variant, theme);
+  const fg = textColorFor(variant, theme);
+  const border = borderFor(variant, theme);
+  const isGhost = variant === "ghost";
+
+  const inner = (
+    <View style={[styles.fill, { borderWidth: isGhost ? 1 : 0, borderColor: border, backgroundColor: isGhost ? "transparent" : "transparent" }]}>
+      {loading ? (
+        <ActivityIndicator color={fg} />
+      ) : (
+        <View style={styles.inner}>
+          {Icon ? <Icon color={fg} size={17} /> : null}
+          <Text style={[styles.text, { color: fg }]}>{children}</Text>
         </View>
-      </AnimatedPressable>
-    );
-  }
+      )}
+    </View>
+  );
 
   return (
     <AnimatedPressable
       onPress={loading || disabled ? () => undefined : onPress}
-      style={[styles.shell, disabled ? styles.disabled : null]}
+      style={[styles.shell, shadows.soft, disabled ? styles.disabled : null]}
     >
-      <LinearGradient
-        colors={paletteFor(variant)}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.fill}
-      >
-        <ButtonContent loading={loading} fg={fg} Icon={Icon}>
-          {children}
-        </ButtonContent>
-      </LinearGradient>
+      {isGhost ? (
+        inner
+      ) : (
+        <LinearGradient
+          colors={palette}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      {isGhost ? null : (
+        <View style={styles.fill}>
+          {loading ? (
+            <ActivityIndicator color={fg} />
+          ) : (
+            <View style={styles.inner}>
+              {Icon ? <Icon color={fg} size={17} /> : null}
+              <Text style={[styles.text, { color: fg }]}>{children}</Text>
+            </View>
+          )}
+        </View>
+      )}
     </AnimatedPressable>
   );
 }
 
-function ButtonContent({
-  children,
-  loading,
-  fg,
-  Icon
-}: PropsWithChildren<{ loading: boolean; fg: string; Icon?: IconComponent }>) {
-  if (loading) return <ActivityIndicator color={fg} />;
-  return (
-    <View style={styles.inner}>
-      {Icon ? <Icon color={fg} size={17} /> : null}
-      <Text style={[styles.text, { color: fg }]}>{children}</Text>
-    </View>
-  );
-}
-
-function paletteFor(variant: NonNullable<Props["variant"]>) {
+function paletteFor(variant: NonNullable<Props["variant"]>, theme: ReturnType<typeof useTheme>["theme"]) {
   switch (variant) {
-    case "gold":
-      return gradients.gold;
     case "danger":
-      return gradients.rose;
-    case "light":
+      return ["#E8A294", "#B5523E"] as const;
+    case "primary":
     default:
-      return [colors.fog, colors.bone] as const;
+      return theme.name === "marble"
+        ? [theme.bg.inverse, "#0A0610"] as const // deep ink on cream
+        : [theme.ink.primary, "#E0D9C9"] as const; // warm cream on dark
   }
 }
 
-function textColorFor(variant: NonNullable<Props["variant"]>) {
-  if (variant === "ghost") return colors.fog;
-  if (variant === "danger") return "#3A1B16";
-  return colors.ink;
+function textColorFor(variant: NonNullable<Props["variant"]>, theme: ReturnType<typeof useTheme>["theme"]) {
+  switch (variant) {
+    case "ghost":
+      return theme.ink.primary;
+    case "danger":
+      return "#3A1B16";
+    case "primary":
+    default:
+      return theme.name === "marble" ? theme.bg.canvas : theme.bg.canvas;
+  }
+}
+
+function borderFor(variant: NonNullable<Props["variant"]>, theme: ReturnType<typeof useTheme>["theme"]) {
+  if (variant === "ghost") return theme.line.hard;
+  return "transparent";
 }
 
 const styles = StyleSheet.create({
-  shell: { borderRadius: radii.md, overflow: "hidden" },
-  fill: { minHeight: 50, paddingHorizontal: 18, alignItems: "center", justifyContent: "center" },
-  ghost: { borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
-  inner: { flexDirection: "row", gap: 8, alignItems: "center" },
-  text: { fontSize: 15, fontWeight: "600", letterSpacing: 0.1 },
+  shell: { borderRadius: radii.pill, overflow: "hidden" },
+  fill: { minHeight: 54, paddingHorizontal: 22, alignItems: "center", justifyContent: "center" },
+  inner: { flexDirection: "row", gap: 10, alignItems: "center" },
+  text: { fontSize: 15, fontWeight: "700", letterSpacing: 0.2 },
   disabled: { opacity: 0.45 }
 });

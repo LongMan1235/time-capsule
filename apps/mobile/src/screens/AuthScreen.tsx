@@ -8,7 +8,8 @@ import { Screen } from "../components/Screen";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { Stagger } from "../components/Stagger";
 import { TextField } from "../components/TextField";
-import { colors, radii, type } from "../design/theme";
+import { useTheme } from "../design/ThemeProvider";
+import { radii, type } from "../design/themes";
 import { useSessionStore, type SessionUser } from "../store/session";
 
 type Mode = "signup" | "login";
@@ -19,6 +20,7 @@ const modeOptions: Array<{ value: Mode; label: string }> = [
 ];
 
 export function AuthScreen() {
+  const { theme } = useTheme();
   const [mode, setMode] = useState<Mode>("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -53,20 +55,24 @@ export function AuthScreen() {
   }
 
   return (
-    <Screen tone="warm">
+    <Screen>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Stagger delay={80}>
-            <Text style={styles.eyebrow}>TIME CAPSULE</Text>
+            <Text style={[styles.eyebrow, { color: theme.accent.gold }]}>TIME CAPSULE</Text>
           </Stagger>
           <Stagger delay={200}>
-            <Text style={styles.title}>{mode === "signup" ? "Create your capsule." : "Welcome back."}</Text>
+            <Text style={[styles.title, { color: theme.ink.primary }]}>
+              {mode === "signup" ? "Create your capsule." : "Welcome back."}
+            </Text>
           </Stagger>
           <Stagger delay={320}>
-            <Text style={styles.subtitle}>Memories stay private until the day you choose.</Text>
+            <Text style={[styles.subtitle, { color: theme.ink.muted }]}>
+              Memories stay private until the day you choose.
+            </Text>
           </Stagger>
 
-          <Stagger delay={440} style={{ marginTop: 28 }}>
+          <Stagger delay={440} style={{ marginTop: 32 }}>
             <SegmentedControl options={modeOptions} value={mode} onChange={setMode} />
           </Stagger>
 
@@ -91,21 +97,8 @@ export function AuthScreen() {
             />
             {mode === "signup" ? (
               <>
-                <TextField
-                  label="USERNAME"
-                  icon={AtSign}
-                  placeholder="future_you"
-                  autoCapitalize="none"
-                  value={username}
-                  onChangeText={setUsername}
-                />
-                <TextField
-                  label="DISPLAY NAME"
-                  icon={UserRound}
-                  placeholder="How friends find you"
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                />
+                <TextField label="USERNAME" icon={AtSign} placeholder="future_you" autoCapitalize="none" value={username} onChangeText={setUsername} />
+                <TextField label="DISPLAY NAME" icon={UserRound} placeholder="How friends find you" value={displayName} onChangeText={setDisplayName} />
               </>
             ) : null}
           </Stagger>
@@ -118,9 +111,12 @@ export function AuthScreen() {
 
           {mode === "login" ? (
             <Stagger delay={780}>
-              <AnimatedPressable onPress={fillTestAccount} style={styles.testHint}>
-                <Text style={styles.testHintText}>
-                  Demo · Rithik <Text style={styles.testHintAccent}>/</Text> mypassword123
+              <AnimatedPressable
+                onPress={fillTestAccount}
+                style={[styles.testHint, { borderColor: theme.line.soft, backgroundColor: theme.bg.surface }]}
+              >
+                <Text style={[styles.testHintText, { color: theme.ink.muted }]}>
+                  Demo · Rithik <Text style={{ color: theme.ink.faint }}>/</Text> mypassword123
                 </Text>
               </AnimatedPressable>
             </Stagger>
@@ -133,21 +129,19 @@ export function AuthScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { flexGrow: 1, padding: 24, paddingTop: 32, justifyContent: "center" },
-  eyebrow: { ...type.micro, color: colors.gold, opacity: 0.85 },
-  title: { ...type.hero, color: colors.fog, marginTop: 10 },
-  subtitle: { ...type.body, color: colors.muted, marginTop: 6 },
-  fields: { marginTop: 22, gap: 12 },
-  cta: { marginTop: 22 },
+  content: { flexGrow: 1, padding: 28, paddingTop: 40, justifyContent: "center" },
+  eyebrow: { ...type.micro, letterSpacing: 3 },
+  title: { ...type.hero, fontSize: 36, marginTop: 14 },
+  subtitle: { ...type.body, marginTop: 8 },
+  fields: { marginTop: 26, gap: 14 },
+  cta: { marginTop: 26 },
   testHint: {
-    marginTop: 16,
+    marginTop: 20,
     alignSelf: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.line
+    borderWidth: 1
   },
-  testHintText: { ...type.caption, color: colors.muted },
-  testHintAccent: { color: colors.mutedDim }
+  testHintText: { ...type.caption }
 });

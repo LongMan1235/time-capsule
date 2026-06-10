@@ -1,6 +1,7 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { ThemeProvider, useTheme } from "./src/design/ThemeProvider";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import type { RootStackParamList } from "./src/navigation/RootNavigator";
 
@@ -29,13 +30,22 @@ const linking = {
   } as const
 };
 
+function ThemedShell() {
+  const { mode } = useTheme();
+  return (
+    <NavigationContainer linking={linking as any}>
+      <RootNavigator />
+      <StatusBar style={mode === "marble" ? "dark" : "light"} />
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <NavigationContainer linking={linking as any}>
-        <RootNavigator />
-        <StatusBar style="light" />
-      </NavigationContainer>
+      <ThemeProvider>
+        <ThemedShell />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

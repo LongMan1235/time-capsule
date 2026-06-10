@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { colors, type } from "../design/theme";
+import { useTheme } from "../design/ThemeProvider";
+import { type } from "../design/themes";
 import { padDigits, timeUntil, type TimeParts } from "../utils/dates";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function CountdownTicker({ unlockAt, createdAt, compact = false }: Props) {
+  const { theme } = useTheme();
   const [parts, setParts] = useState<TimeParts>(() => timeUntil(unlockAt, createdAt));
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export function CountdownTicker({ unlockAt, createdAt, compact = false }: Props)
 
   if (compact) {
     return (
-      <Text style={styles.compact}>
+      <Text style={[styles.compact, { color: theme.ink.primary }]}>
         {parts.days}d {padDigits(parts.hours)}h {padDigits(parts.minutes)}m
       </Text>
     );
@@ -36,10 +38,13 @@ export function CountdownTicker({ unlockAt, createdAt, compact = false }: Props)
 }
 
 function Unit({ value, label, pad = false, accent = false }: { value: number; label: string; pad?: boolean; accent?: boolean }) {
+  const { theme } = useTheme();
   return (
     <View style={styles.unit}>
-      <Text style={[styles.value, accent ? styles.accent : null]}>{pad ? padDigits(value) : value}</Text>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.value, { color: accent ? theme.accent.gold : theme.ink.primary }]}>
+        {pad ? padDigits(value) : value}
+      </Text>
+      <Text style={[styles.label, { color: theme.ink.muted }]}>{label}</Text>
     </View>
   );
 }
@@ -47,8 +52,7 @@ function Unit({ value, label, pad = false, accent = false }: { value: number; la
 const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
   unit: { alignItems: "center", minWidth: 56, flex: 1 },
-  value: { ...type.hero, color: colors.fog, fontVariant: ["tabular-nums"] },
-  accent: { color: colors.gold },
-  label: { ...type.micro, color: colors.muted, marginTop: 4 },
-  compact: { ...type.caption, color: colors.fog, opacity: 0.78, fontVariant: ["tabular-nums"] }
+  value: { ...type.hero, fontVariant: ["tabular-nums"] },
+  label: { ...type.micro, marginTop: 4 },
+  compact: { ...type.caption, fontVariant: ["tabular-nums"], fontWeight: "700" }
 });
